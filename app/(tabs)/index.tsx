@@ -5,11 +5,10 @@ import {
   ScrollView,
   Pressable,
   StyleSheet,
-  TextInput,
+  Animated,
   Dimensions,
   Platform,
   Image,
-  Animated,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -19,12 +18,14 @@ import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
 import { PRODUCTS, CATEGORIES, Product } from "@/data/products";
 import { ProductCard } from "@/components/ProductCard";
+import { ScreenBackground } from "@/components/ScreenBackground";
 import { useCart } from "@/context/CartContext";
 
 const { width } = Dimensions.get("window");
+const UD = Platform.OS !== "web";
 
-const FEATURED_PRODUCTS = PRODUCTS.filter((p) => p.isFeatured);
-const TRENDING_PRODUCTS = PRODUCTS;
+const TRENDING = PRODUCTS;
+const CATS = CATEGORIES.filter((c) => c !== "All");
 
 function CategoryPill({
   label,
@@ -35,27 +36,30 @@ function CategoryPill({
   active: boolean;
   onPress: () => void;
 }) {
-  return (
-    <Pressable onPress={onPress} style={styles.pillWrapper}>
-      {active ? (
+  if (active) {
+    return (
+      <Pressable onPress={onPress} style={styles.pill}>
         <LinearGradient
           colors={[Colors.goldStart, Colors.goldEnd]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
-          style={styles.pillActive}
+          style={styles.pillFilled}
         >
           <Text style={styles.pillTextActive}>{label}</Text>
         </LinearGradient>
-      ) : (
-        <View style={styles.pillInactive}>
-          <Text style={styles.pillTextInactive}>{label}</Text>
-        </View>
-      )}
+      </Pressable>
+    );
+  }
+  return (
+    <Pressable onPress={onPress} style={styles.pill}>
+      <View style={styles.pillInactive}>
+        <Text style={styles.pillTextInactive}>{label}</Text>
+      </View>
     </Pressable>
   );
 }
 
-function FeaturedCard({ product }: { product: Product }) {
+function FeaturedRow({ product }: { product: Product }) {
   const scale = useRef(new Animated.Value(1)).current;
   const { addToCart } = useCart();
 
@@ -64,59 +68,43 @@ function FeaturedCard({ product }: { product: Product }) {
       <Pressable
         onPress={() => router.push(`/product/${product.id}`)}
         onPressIn={() =>
-          Animated.spring(scale, {
-            toValue: 0.97,
-            useNativeDriver: true,
-            speed: 20,
-          }).start()
+          Animated.spring(scale, { toValue: 0.97, useNativeDriver: UD, speed: 20 }).start()
         }
         onPressOut={() =>
-          Animated.spring(scale, {
-            toValue: 1,
-            useNativeDriver: true,
-            speed: 20,
-          }).start()
+          Animated.spring(scale, { toValue: 1, useNativeDriver: UD, speed: 20 }).start()
         }
-        style={styles.featuredCard}
+        style={styles.featCard}
       >
         <LinearGradient
-          colors={[
-            "rgba(214,162,74,0.10)",
-            "rgba(20,20,28,0.95)",
-          ]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+          colors={["rgba(214,162,74,0.13)", "rgba(20,20,28,0.9)"]}
           style={StyleSheet.absoluteFill}
         />
-        <View style={styles.featuredGlow} />
+        <View style={styles.featGlow} />
         <Image
           source={product.image}
-          style={styles.featuredImage}
+          style={styles.featImage}
           resizeMode="contain"
         />
-        <View style={styles.featuredInfo}>
-          <Text style={styles.featuredBrand}>{product.brand}</Text>
-          <Text style={styles.featuredName}>{product.name}</Text>
-          <View style={styles.featuredBottom}>
-            <Text style={styles.featuredPrice}>
-              ${product.price.toFixed(2)}
-            </Text>
-            <Pressable
-              onPress={(e) => {
-                e.stopPropagation();
-                addToCart(product);
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              }}
-              style={styles.featuredAddBtn}
-            >
-              <LinearGradient
-                colors={[Colors.goldStart, Colors.goldEnd]}
-                style={styles.featuredAddGradient}
-              >
-                <Ionicons name="bag-add" size={16} color="#0B0B0F" />
-              </LinearGradient>
-            </Pressable>
+        <View style={styles.featInfo}>
+          <View>
+            <Text style={styles.featBrand}>{product.brand}</Text>
+            <Text style={styles.featName}>{product.name}</Text>
+            <Text style={styles.featPrice}>${product.price.toFixed(2)}</Text>
           </View>
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation();
+              addToCart(product);
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }}
+          >
+            <LinearGradient
+              colors={[Colors.goldStart, Colors.goldEnd]}
+              style={styles.featAddBtn}
+            >
+              <Ionicons name="bag-add" size={16} color="#0B0B0F" />
+            </LinearGradient>
+          </Pressable>
         </View>
       </Pressable>
     </Animated.View>
@@ -125,114 +113,106 @@ function FeaturedCard({ product }: { product: Product }) {
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const [activeCategory, setActiveCategory] = useState("All");
-  const { addToCart } = useCart();
-
-  const topPadding = Platform.OS === "web" ? 67 : insets.top;
+  const [activeCategory, setActiveCategory] = useState("Whiskey");
+  const { addToCart, totalItems } = useCart();
+  const topPad = Platform.OS === "web" ? 67 : insets.top;
 
   const filtered =
-    activeCategory === "All"
-      ? TRENDING_PRODUCTS
-      : TRENDING_PRODUCTS.filter(
+    TRENDING.filter(
+      (p) =>
+        p.category.toLowerCase() === activeCategory.toLowerCase() ||
+        p.tags.some((t) => t.toLowerCase() === activeCategory.toLowerCase())
+    ).length > 0
+      ? TRENDING.filter(
           (p) =>
             p.category.toLowerCase() === activeCategory.toLowerCase() ||
-            p.tags.some(
-              (t) => t.toLowerCase() === activeCategory.toLowerCase()
-            )
-        );
+            p.tags.some((t) => t.toLowerCase() === activeCategory.toLowerCase())
+        )
+      : TRENDING;
 
   return (
-    <View style={styles.container}>
+    <ScreenBackground>
       <ScrollView
-        style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
-          styles.scrollContent,
-          {
-            paddingTop: topPadding + 12,
-            paddingBottom: Platform.OS === "web" ? 34 + 84 : 100,
-          },
+          styles.scroll,
+          { paddingTop: topPad + 14, paddingBottom: Platform.OS === "web" ? 34 + 84 : 100 },
         ]}
       >
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>Good Evening</Text>
-            <Text style={styles.subtitle}>What are you sipping tonight?</Text>
-          </View>
-          <Pressable style={styles.profileBtn}>
+        <View style={styles.topBar}>
+          <View style={styles.userSection}>
             <LinearGradient
-              colors={["rgba(214,162,74,0.15)", "rgba(214,162,74,0.05)"]}
-              style={styles.profileBtnInner}
+              colors={[Colors.goldStart, Colors.goldEnd]}
+              style={styles.avatar}
             >
-              <Ionicons name="person" size={20} color={Colors.goldAccent} />
+              <Text style={styles.avatarText}>D</Text>
             </LinearGradient>
-          </Pressable>
+            <View style={styles.userTextBlock}>
+              <Text style={styles.userLabel}>Welcome back</Text>
+              <View style={styles.userNameRow}>
+                <Text style={styles.userName}>Darlene</Text>
+                <Ionicons name="chevron-down" size={14} color={Colors.textSecondary} />
+              </View>
+            </View>
+          </View>
+          <View style={styles.topIcons}>
+            <Pressable
+              onPress={() => router.push("/cart")}
+              style={styles.iconBtn}
+            >
+              <Ionicons name="bag-outline" size={22} color={Colors.textPrimary} />
+              {totalItems > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{totalItems}</Text>
+                </View>
+              )}
+            </Pressable>
+            <Pressable style={styles.iconBtn}>
+              <Ionicons name="options-outline" size={22} color={Colors.textPrimary} />
+            </Pressable>
+          </View>
         </View>
 
-        <View style={styles.searchContainer}>
-          <LinearGradient
-            colors={["rgba(255,255,255,0.07)", "rgba(255,255,255,0.04)"]}
-            style={styles.searchGradient}
-          >
-            <Ionicons
-              name="search"
-              size={18}
-              color={Colors.textSecondary}
-              style={styles.searchIcon}
-            />
-            <Pressable
-              style={{ flex: 1 }}
-              onPress={() => router.push("/search")}
-            >
-              <Text style={styles.searchPlaceholder}>
-                Search spirits, wines, beers...
-              </Text>
-            </Pressable>
-          </LinearGradient>
-        </View>
+        <Pressable
+          style={styles.searchBar}
+          onPress={() => router.push("/search")}
+        >
+          <Ionicons name="search" size={17} color="rgba(185,185,195,0.7)" />
+          <Text style={styles.searchPlaceholder}>Search Products</Text>
+        </Pressable>
 
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoryScroll}
+          contentContainerStyle={styles.catScroll}
         >
-          {CATEGORIES.map((cat) => (
+          {CATS.map((c) => (
             <CategoryPill
-              key={cat}
-              label={cat}
-              active={activeCategory === cat}
+              key={c}
+              label={c}
+              active={activeCategory === c}
               onPress={() => {
-                setActiveCategory(cat);
+                setActiveCategory(c);
                 Haptics.selectionAsync();
               }}
             />
           ))}
         </ScrollView>
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Featured</Text>
-          <View style={styles.sectionAccent} />
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.featuredScroll}
-        >
-          {FEATURED_PRODUCTS.map((p) => (
-            <FeaturedCard key={p.id} product={p} />
-          ))}
-        </ScrollView>
-
-        <View style={[styles.sectionHeader, { marginTop: 32 }]}>
+        <View style={styles.sectionRow}>
           <Text style={styles.sectionTitle}>Trending</Text>
-          <View style={styles.sectionAccent} />
+          <Pressable onPress={() => router.push("/search")}>
+            <View style={styles.seeAllRow}>
+              <Text style={styles.seeAllText}>See All</Text>
+              <Ionicons name="chevron-forward" size={13} color={Colors.goldAccent} />
+            </View>
+          </Pressable>
         </View>
 
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.trendingScroll}
+          contentContainerStyle={styles.cardsScroll}
         >
           {filtered.map((p) => (
             <ProductCard
@@ -246,201 +226,246 @@ export default function HomeScreen() {
             />
           ))}
         </ScrollView>
+
+        <View style={[styles.sectionRow, { marginTop: 28 }]}>
+          <Text style={styles.sectionTitle}>All Spirits</Text>
+          <Pressable onPress={() => router.push("/search")}>
+            <View style={styles.seeAllRow}>
+              <Text style={styles.seeAllText}>See All</Text>
+              <Ionicons name="chevron-forward" size={13} color={Colors.goldAccent} />
+            </View>
+          </Pressable>
+        </View>
+
+        <View style={styles.featuredList}>
+          {PRODUCTS.slice(0, 3).map((p) => (
+            <FeaturedRow key={p.id} product={p} />
+          ))}
+        </View>
       </ScrollView>
-    </View>
+    </ScreenBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
+  scroll: {
+    paddingHorizontal: 16,
   },
-  scrollContent: {
-    paddingHorizontal: 20,
-  },
-  header: {
+  topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 18,
   },
-  greeting: {
-    fontSize: 26,
+  userSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: {
+    fontSize: 17,
+    fontFamily: "PlayfairDisplay_700Bold",
+    color: "#0B0B0F",
+  },
+  userTextBlock: {
+    gap: 1,
+  },
+  userLabel: {
+    fontSize: 11,
+    color: "rgba(185,185,195,0.7)",
+    fontFamily: "CormorantGaramond_400Regular",
+    letterSpacing: 0.3,
+  },
+  userNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  userName: {
+    fontSize: 17,
     color: Colors.textPrimary,
     fontFamily: "PlayfairDisplay_700Bold",
     letterSpacing: 0.3,
   },
-  subtitle: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    marginTop: 3,
-    fontFamily: "CormorantGaramond_400Regular",
-    letterSpacing: 0.3,
+  topIcons: {
+    flexDirection: "row",
+    gap: 8,
   },
-  profileBtn: {
-    borderRadius: 20,
-    overflow: "hidden",
-  },
-  profileBtnInner: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.07)",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
-  },
-  searchContainer: {
-    marginBottom: 20,
-    borderRadius: 16,
-    overflow: "hidden",
-    borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
   },
-  searchGradient: {
+  badge: {
+    position: "absolute",
+    top: -3,
+    right: -3,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: Colors.goldAccent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badgeText: {
+    fontSize: 9,
+    color: "#0B0B0F",
+    fontFamily: "PlayfairDisplay_700Bold",
+  },
+  searchBar: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    borderRadius: 16,
-  },
-  searchIcon: {
-    marginRight: 10,
+    gap: 10,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 50,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
   },
   searchPlaceholder: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: "rgba(185,185,195,0.6)",
     fontFamily: "CormorantGaramond_400Regular",
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
   },
-  categoryScroll: {
-    paddingRight: 20,
-    paddingBottom: 4,
+  catScroll: {
     gap: 8,
+    paddingRight: 16,
     marginBottom: 4,
   },
-  pillWrapper: {
-    borderRadius: 20,
+  pill: {
+    borderRadius: 50,
     overflow: "hidden",
   },
-  pillActive: {
-    paddingHorizontal: 18,
+  pillFilled: {
+    paddingHorizontal: 20,
     paddingVertical: 9,
-    borderRadius: 20,
+    borderRadius: 50,
   },
   pillInactive: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     paddingVertical: 9,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 50,
+    backgroundColor: "rgba(255,255,255,0.07)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.1)",
   },
   pillTextActive: {
     fontSize: 13,
-    color: "#0B0B0F",
     fontFamily: "CormorantGaramond_600SemiBold",
+    color: "#0B0B0F",
     letterSpacing: 0.3,
   },
   pillTextInactive: {
     fontSize: 13,
-    color: Colors.textSecondary,
     fontFamily: "CormorantGaramond_400Regular",
+    color: "rgba(185,185,195,0.8)",
     letterSpacing: 0.3,
   },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 28,
-    marginBottom: 16,
-    gap: 12,
-  },
-  sectionTitle: {
-    fontSize: 22,
-    color: Colors.textPrimary,
-    fontFamily: "PlayfairDisplay_700Bold",
-    letterSpacing: 0.3,
-  },
-  sectionAccent: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "rgba(214,162,74,0.2)",
-  },
-  featuredScroll: {
-    paddingRight: 20,
-    gap: 16,
-  },
-  featuredCard: {
-    width: width * 0.72,
-    height: 200,
-    borderRadius: 26,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    backgroundColor: Colors.card,
-  },
-  featuredGlow: {
-    position: "absolute",
-    left: 90,
-    top: "50%",
-    marginTop: -60,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "rgba(214,162,74,0.1)",
-  },
-  featuredImage: {
-    width: 100,
-    height: 170,
-    marginRight: 12,
-  },
-  featuredInfo: {
-    flex: 1,
-    justifyContent: "center",
-    gap: 4,
-  },
-  featuredBrand: {
-    fontSize: 11,
-    color: Colors.textGold,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-    fontFamily: "CormorantGaramond_400Regular",
-  },
-  featuredName: {
-    fontSize: 18,
-    color: Colors.textPrimary,
-    fontFamily: "PlayfairDisplay_700Bold",
-    lineHeight: 24,
-    marginTop: 2,
-  },
-  featuredBottom: {
+  sectionRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 12,
+    marginTop: 22,
+    marginBottom: 14,
   },
-  featuredPrice: {
-    fontSize: 20,
-    color: Colors.textGold,
+  sectionTitle: {
+    fontSize: 22,
     fontFamily: "PlayfairDisplay_700Bold",
+    color: Colors.textPrimary,
+    letterSpacing: 0.5,
   },
-  featuredAddBtn: {
-    borderRadius: 12,
+  seeAllRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  seeAllText: {
+    fontSize: 13,
+    fontFamily: "CormorantGaramond_600SemiBold",
+    color: Colors.goldAccent,
+    letterSpacing: 0.5,
+  },
+  cardsScroll: {
+    paddingRight: 16,
+    paddingBottom: 4,
+  },
+  featuredList: {
+    gap: 12,
+    marginTop: 4,
+  },
+  featCard: {
+    flexDirection: "row",
+    backgroundColor: "rgba(20,20,28,0.78)",
+    borderRadius: 20,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(214,162,74,0.25)",
+    alignItems: "center",
+    paddingRight: 16,
+    height: 90,
   },
-  featuredAddGradient: {
+  featGlow: {
+    position: "absolute",
+    left: 60,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(214,162,74,0.1)",
+    top: 5,
+  },
+  featImage: {
+    width: 70,
+    height: 80,
+    marginLeft: 8,
+  },
+  featInfo: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingLeft: 12,
+  },
+  featBrand: {
+    fontSize: 10,
+    color: Colors.textGold,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    fontFamily: "CormorantGaramond_400Regular",
+  },
+  featName: {
+    fontSize: 15,
+    fontFamily: "PlayfairDisplay_700Bold",
+    color: Colors.textPrimary,
+    marginTop: 2,
+    letterSpacing: 0.3,
+  },
+  featPrice: {
+    fontSize: 16,
+    fontFamily: "PlayfairDisplay_700Bold",
+    color: Colors.textGold,
+    marginTop: 4,
+    letterSpacing: 0.5,
+  },
+  featAddBtn: {
     width: 36,
     height: 36,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 12,
-  },
-  trendingScroll: {
-    paddingRight: 20,
-    paddingBottom: 8,
   },
 });

@@ -18,6 +18,7 @@ import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
 import { PRODUCTS, CATEGORIES, Product } from "@/data/products";
 import { useCart } from "@/context/CartContext";
+import { ScreenBackground } from "@/components/ScreenBackground";
 
 function SearchResultCard({ product }: { product: Product }) {
   const { addToCart } = useCart();
@@ -115,7 +116,7 @@ export default function SearchScreen() {
   });
 
   return (
-    <View style={styles.container}>
+    <ScreenBackground>
       <View style={[styles.topSection, { paddingTop: topPadding + 12 }]}>
         <Text style={styles.screenTitle}>Explore</Text>
 
@@ -194,7 +195,7 @@ export default function SearchScreen() {
           </View>
         }
       />
-    </View>
+    </ScreenBackground>
   );
 }
 

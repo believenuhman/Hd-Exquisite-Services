@@ -5,7 +5,7 @@ import {
   Pressable,
   StyleSheet,
   Animated,
-  Dimensions,
+  Platform,
   Image,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -13,8 +13,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { Product } from "@/data/products";
 
-const CARD_WIDTH = 180;
-const CARD_HEIGHT = 260;
+const CARD_WIDTH = 170;
+const CARD_HEIGHT = 230;
 
 interface ProductCardProps {
   product: Product;
@@ -24,181 +24,161 @@ interface ProductCardProps {
 
 export function ProductCard({ product, onPress, onAddToCart }: ProductCardProps) {
   const scale = useRef(new Animated.Value(1)).current;
-
-  const handlePressIn = () => {
-    Animated.spring(scale, {
-      toValue: 0.96,
-      useNativeDriver: true,
-      speed: 20,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(scale, {
-      toValue: 1,
-      useNativeDriver: true,
-      speed: 20,
-    }).start();
-  };
-
   const fullStars = Math.floor(product.rating);
   const hasHalf = product.rating % 1 >= 0.5;
 
   return (
-    <Animated.View style={[{ transform: [{ scale }] }]}>
+    <Animated.View style={[styles.animWrapper, { transform: [{ scale }] }]}>
       <Pressable
         onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
+        onPressIn={() =>
+          Animated.spring(scale, {
+            toValue: 0.96,
+            useNativeDriver: Platform.OS !== "web",
+            speed: 20,
+          }).start()
+        }
+        onPressOut={() =>
+          Animated.spring(scale, {
+            toValue: 1,
+            useNativeDriver: Platform.OS !== "web",
+            speed: 20,
+          }).start()
+        }
+        style={styles.card}
       >
-        <View style={styles.card}>
-          <View style={styles.imageContainer}>
-            <LinearGradient
-              colors={["rgba(214,162,74,0.12)", "rgba(214,162,74,0.02)"]}
-              style={StyleSheet.absoluteFill}
-            />
-            <View style={styles.glowCircle} />
-            <Image
-              source={product.image}
-              style={styles.bottleImage}
-              resizeMode="contain"
-            />
-          </View>
-
-          <View style={styles.info}>
-            <Text style={styles.brandText} numberOfLines={1}>
-              {product.brand}
-            </Text>
-            <Text style={styles.nameText} numberOfLines={2}>
-              {product.name}
-            </Text>
-
-            <View style={styles.ratingRow}>
-              {[1, 2, 3, 4, 5].map((i) => (
-                <Ionicons
-                  key={i}
-                  name={
-                    i <= fullStars
-                      ? "star"
-                      : i === fullStars + 1 && hasHalf
-                      ? "star-half"
-                      : "star-outline"
-                  }
-                  size={10}
-                  color={Colors.goldAccent}
-                />
-              ))}
-              <Text style={styles.ratingText}>{product.rating}</Text>
-            </View>
-
-            <View style={styles.priceRow}>
-              <Text style={styles.priceText}>${product.price.toFixed(2)}</Text>
-              <Pressable
-                style={styles.addBtn}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  onAddToCart?.();
-                }}
-                hitSlop={8}
-              >
-                <LinearGradient
-                  colors={[Colors.goldStart, Colors.goldEnd]}
-                  style={styles.addBtnGradient}
-                >
-                  <Ionicons name="add" size={16} color="#0B0B0F" />
-                </LinearGradient>
-              </Pressable>
-            </View>
-          </View>
+        <View style={styles.imageArea}>
+          <LinearGradient
+            colors={["rgba(214,162,74,0.14)", "rgba(11,11,15,0.6)"]}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.glowCircle} />
+          <Image
+            source={product.image}
+            style={styles.bottleImage}
+            resizeMode="contain"
+          />
         </View>
+
+        <LinearGradient
+          colors={["rgba(14,12,10,0.85)", "rgba(22,18,12,0.95)"]}
+          style={styles.infoArea}
+        >
+          <Text style={styles.productName} numberOfLines={1}>
+            {product.name}
+          </Text>
+          <View style={styles.starsRow}>
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Ionicons
+                key={i}
+                name={
+                  i <= fullStars
+                    ? "star"
+                    : i === fullStars + 1 && hasHalf
+                    ? "star-half"
+                    : "star-outline"
+                }
+                size={10}
+                color={Colors.goldAccent}
+              />
+            ))}
+            <Text style={styles.ratingNum}>{product.rating}</Text>
+          </View>
+          <View style={styles.priceRow}>
+            <Text style={styles.priceText}>${product.price.toFixed(2)}</Text>
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                onAddToCart?.();
+              }}
+              hitSlop={8}
+            >
+              <LinearGradient
+                colors={[Colors.goldStart, Colors.goldEnd]}
+                style={styles.addBtn}
+              >
+                <Ionicons name="add" size={14} color="#0B0B0F" />
+              </LinearGradient>
+            </Pressable>
+          </View>
+        </LinearGradient>
       </Pressable>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
+  animWrapper: {
+    marginRight: 14,
+  },
   card: {
     width: CARD_WIDTH,
-    backgroundColor: Colors.card,
-    borderRadius: 24,
+    height: CARD_HEIGHT,
+    borderRadius: 22,
     overflow: "hidden",
+    backgroundColor: "rgba(20,20,28,0.78)",
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
-    marginRight: 16,
+    borderColor: "rgba(214,162,74,0.25)",
   },
-  imageContainer: {
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT - 90,
+  imageArea: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    position: "relative",
   },
   glowCircle: {
     position: "absolute",
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: "rgba(214,162,74,0.18)",
+    backgroundColor: "rgba(214,162,74,0.15)",
     top: "50%",
     left: "50%",
     marginTop: -50,
     marginLeft: -50,
   },
   bottleImage: {
-    width: CARD_WIDTH - 30,
-    height: CARD_HEIGHT - 100,
+    width: CARD_WIDTH - 20,
+    height: 140,
   },
-  info: {
-    paddingHorizontal: 14,
-    paddingBottom: 14,
-    paddingTop: 10,
+  infoArea: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4,
   },
-  brandText: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    fontFamily: "CormorantGaramond_400Regular",
-  },
-  nameText: {
-    fontSize: 15,
+  productName: {
+    fontSize: 14,
+    fontFamily: "PlayfairDisplay_700Bold",
     color: Colors.textPrimary,
-    marginTop: 2,
-    lineHeight: 20,
-    fontFamily: "CormorantGaramond_600SemiBold",
+    letterSpacing: 0.3,
   },
-  ratingRow: {
+  starsRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 2,
-    marginTop: 6,
   },
-  ratingText: {
+  ratingNum: {
     fontSize: 10,
     color: Colors.textSecondary,
-    marginLeft: 3,
     fontFamily: "CormorantGaramond_400Regular",
+    marginLeft: 4,
   },
   priceRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 8,
+    marginTop: 2,
   },
   priceText: {
-    fontSize: 16,
-    color: Colors.textGold,
+    fontSize: 18,
     fontFamily: "PlayfairDisplay_700Bold",
+    color: Colors.textGold,
+    letterSpacing: 0.5,
   },
   addBtn: {
-    borderRadius: 10,
-    overflow: "hidden",
-  },
-  addBtnGradient: {
-    width: 28,
-    height: 28,
+    width: 24,
+    height: 24,
+    borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 10,
   },
 });

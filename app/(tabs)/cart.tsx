@@ -1,11 +1,10 @@
-import React, { useRef } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   ScrollView,
   Pressable,
   StyleSheet,
-  Animated,
   Platform,
   Image,
 } from "react-native";
@@ -15,36 +14,51 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
 import { useCart, CartItem } from "@/context/CartContext";
+import { ScreenBackground } from "@/components/ScreenBackground";
+import { CATEGORIES } from "@/data/products";
 
 const SHIPPING = 9.99;
+const CATS = CATEGORIES.filter((c) => c !== "All");
 
-function CartItemCard({ item }: { item: CartItem }) {
+function CartItemRow({ item }: { item: CartItem }) {
   const { updateQuantity, removeFromCart } = useCart();
+  const fullStars = Math.floor(item.product.rating);
 
   return (
-    <View style={styles.itemCard}>
-      <View style={styles.itemImageContainer}>
+    <View style={styles.itemRow}>
+      <View style={styles.thumbContainer}>
         <LinearGradient
           colors={["rgba(214,162,74,0.1)", "rgba(20,20,28,0.5)"]}
           style={StyleSheet.absoluteFill}
         />
         <Image
           source={item.product.image}
-          style={styles.itemImage}
+          style={styles.thumbImage}
           resizeMode="contain"
         />
       </View>
 
-      <View style={styles.itemInfo}>
-        <Text style={styles.itemBrand}>{item.product.brand}</Text>
-        <Text style={styles.itemName} numberOfLines={2}>
+      <View style={styles.itemCenter}>
+        <Text style={styles.itemName} numberOfLines={1}>
           {item.product.name}
         </Text>
-        <Text style={styles.itemMeta}>
-          {item.product.volume} · {item.product.abv} ABV
+        <View style={styles.starsRow}>
+          {[1, 2, 3, 4, 5].map((i) => (
+            <Ionicons
+              key={i}
+              name={i <= fullStars ? "star" : "star-outline"}
+              size={10}
+              color={Colors.goldAccent}
+            />
+          ))}
+        </View>
+        <Text style={styles.itemPrice}>
+          ${(item.product.price * item.quantity).toFixed(2)}
         </Text>
+      </View>
 
-        <View style={styles.quantityRow}>
+      <View style={styles.itemRight}>
+        <View style={styles.qtyControl}>
           <Pressable
             onPress={() => {
               updateQuantity(item.product.id, item.quantity - 1);
@@ -53,39 +67,26 @@ function CartItemCard({ item }: { item: CartItem }) {
             style={styles.qtyBtn}
             hitSlop={8}
           >
-            <Ionicons name="remove" size={16} color={Colors.goldAccent} />
+            <Ionicons name="remove" size={14} color={Colors.textPrimary} />
           </Pressable>
-          <Text style={styles.qtyText}>{item.quantity}</Text>
+          <Text style={styles.qtyNum}>{item.quantity}</Text>
           <Pressable
             onPress={() => {
               updateQuantity(item.product.id, item.quantity + 1);
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             }}
-            style={styles.qtyBtn}
+            style={styles.qtyBtnAdd}
             hitSlop={8}
           >
-            <Ionicons name="add" size={16} color={Colors.goldAccent} />
+            <LinearGradient
+              colors={[Colors.goldStart, Colors.goldEnd]}
+              style={styles.qtyBtnAddGrad}
+            >
+              <Text style={styles.qtyAddText}>Add</Text>
+              <Ionicons name="add" size={12} color="#0B0B0F" />
+            </LinearGradient>
           </Pressable>
         </View>
-      </View>
-
-      <View style={styles.itemRight}>
-        <Pressable
-          onPress={() => {
-            removeFromCart(item.product.id);
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          }}
-          hitSlop={8}
-          style={styles.removeBtn}
-        >
-          <Ionicons name="close" size={16} color={Colors.textSecondary} />
-        </Pressable>
-        <Text style={styles.itemPrice}>
-          ${(item.product.price * item.quantity).toFixed(2)}
-        </Text>
-        <Text style={styles.itemUnitPrice}>
-          ${item.product.price.toFixed(2)} each
-        </Text>
       </View>
     </View>
   );
@@ -94,285 +95,355 @@ function CartItemCard({ item }: { item: CartItem }) {
 export default function CartScreen() {
   const insets = useSafeAreaInsets();
   const { items, subtotal, clearCart, totalItems } = useCart();
-  const topPadding = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
-
+  const [activeFilter, setActiveFilter] = useState("Beers");
+  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const botPad = Platform.OS === "web" ? 34 : insets.bottom;
   const total = subtotal + (subtotal > 0 ? SHIPPING : 0);
 
-  if (items.length === 0) {
-    return (
-      <View style={styles.container}>
-        <View style={[styles.header, { paddingTop: topPadding + 12 }]}>
-          <Text style={styles.headerTitle}>My Cart</Text>
-        </View>
-        <View style={styles.emptyState}>
-          <View style={styles.emptyIcon}>
-            <Ionicons name="bag-outline" size={42} color={Colors.textSecondary} />
-          </View>
-          <Text style={styles.emptyTitle}>Your cart is empty</Text>
-          <Text style={styles.emptySubtitle}>
-            Browse our premium collection and add your favorites
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
   return (
-    <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: topPadding + 12 }]}>
+    <ScreenBackground>
+      <View style={[styles.header, { paddingTop: topPad + 12 }]}>
         <Text style={styles.headerTitle}>My Cart</Text>
-        <Pressable
-          onPress={() => {
-            clearCart();
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          }}
-        >
-          <Text style={styles.clearText}>Clear All</Text>
-        </Pressable>
+        {items.length > 0 && (
+          <Pressable
+            onPress={() => {
+              clearCart();
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            }}
+            hitSlop={8}
+          >
+            <Ionicons name="trash-outline" size={20} color="rgba(185,185,195,0.6)" />
+          </Pressable>
+        )}
       </View>
 
       <ScrollView
-        style={{ flex: 1 }}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: bottomPadding + 220 },
-        ]}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.catScrollContainer}
+        contentContainerStyle={styles.catScroll}
       >
-        <View style={styles.itemsList}>
-          {items.map((item) => (
-            <CartItemCard key={item.product.id} item={item} />
-          ))}
-        </View>
+        {CATS.map((c) => (
+          <Pressable
+            key={c}
+            onPress={() => setActiveFilter(c)}
+            style={styles.catPillWrap}
+          >
+            {activeFilter === c ? (
+              <LinearGradient
+                colors={[Colors.goldStart, Colors.goldEnd]}
+                style={styles.catPillFilled}
+              >
+                <Text style={styles.catPillActiveText}>{c}</Text>
+              </LinearGradient>
+            ) : (
+              <View style={styles.catPillInactive}>
+                <Text style={styles.catPillInactiveText}>{c}</Text>
+              </View>
+            )}
+          </Pressable>
+        ))}
       </ScrollView>
 
-      <View
-        style={[
-          styles.summaryContainer,
-          { paddingBottom: bottomPadding + (Platform.OS === "web" ? 84 : 72) },
-        ]}
-      >
-        <LinearGradient
-          colors={["rgba(20,20,28,0.95)", "#14141C"]}
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={styles.summaryBorder} />
-
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Subtotal ({totalItems} items)</Text>
-          <Text style={styles.summaryValue}>${subtotal.toFixed(2)}</Text>
+      {items.length === 0 ? (
+        <View style={styles.emptyState}>
+          <View style={styles.emptyIconCircle}>
+            <Ionicons name="bag-outline" size={40} color={Colors.textSecondary} />
+          </View>
+          <Text style={styles.emptyTitle}>Your cart is empty</Text>
+          <Text style={styles.emptySubtitle}>
+            Browse our collection and add your favorites
+          </Text>
         </View>
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Shipping</Text>
-          <Text style={styles.summaryValue}>${SHIPPING.toFixed(2)}</Text>
-        </View>
-        <View style={[styles.summaryRow, styles.totalRow]}>
-          <Text style={styles.totalLabel}>Total</Text>
-          <Text style={styles.totalValue}>${total.toFixed(2)}</Text>
-        </View>
-
-        <Pressable
-          style={styles.checkoutBtn}
-          onPress={() =>
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-          }
-        >
-          <LinearGradient
-            colors={[Colors.goldStart, Colors.goldEnd]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.checkoutGradient}
+      ) : (
+        <>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[
+              styles.listContent,
+              { paddingBottom: botPad + 200 },
+            ]}
           >
-            <Text style={styles.checkoutText}>Proceed to Checkout</Text>
-            <Ionicons name="arrow-forward" size={18} color="#0B0B0F" />
-          </LinearGradient>
-        </Pressable>
-      </View>
-    </View>
+            {items.map((item) => (
+              <CartItemRow key={item.product.id} item={item} />
+            ))}
+          </ScrollView>
+
+          <View
+            style={[
+              styles.summaryArea,
+              { paddingBottom: botPad + (Platform.OS === "web" ? 84 : 72) },
+            ]}
+          >
+            <LinearGradient
+              colors={["rgba(11,11,15,0)", Colors.background]}
+              style={[styles.summaryFade, { pointerEvents: "none" } as any]}
+            />
+            <LinearGradient
+              colors={[Colors.background, Colors.background]}
+              style={styles.summaryBg}
+            />
+            <View style={styles.summaryDivider} />
+
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Subtotal:</Text>
+              <Text style={styles.summaryValue}>${subtotal.toFixed(2)}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Shipping:</Text>
+              <Text style={styles.summaryValue}>${SHIPPING.toFixed(2)}</Text>
+            </View>
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Total</Text>
+              <Text style={styles.totalValue}>${total.toFixed(2)}</Text>
+            </View>
+
+            <Pressable
+              style={styles.checkoutBtn}
+              onPress={() =>
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+              }
+            >
+              <LinearGradient
+                colors={[Colors.goldStart, Colors.goldEnd]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.checkoutGrad}
+              >
+                <Text style={styles.checkoutText}>Proceed to Checkout</Text>
+                <Ionicons name="arrow-forward" size={18} color="#0B0B0F" />
+              </LinearGradient>
+            </Pressable>
+          </View>
+        </>
+      )}
+    </ScreenBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
   header: {
-    paddingHorizontal: 20,
-    paddingBottom: 16,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    position: "relative",
   },
   headerTitle: {
-    fontSize: 30,
-    color: Colors.textPrimary,
+    fontSize: 22,
     fontFamily: "PlayfairDisplay_700Bold",
-    letterSpacing: 0.3,
-  },
-  clearText: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    fontFamily: "CormorantGaramond_400Regular",
+    color: Colors.textPrimary,
     letterSpacing: 0.5,
   },
-  scrollContent: {
-    paddingHorizontal: 20,
+  catScrollContainer: {
+    flexGrow: 0,
+    marginBottom: 12,
   },
-  itemsList: {
-    gap: 14,
+  catScroll: {
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingRight: 24,
   },
-  itemCard: {
-    flexDirection: "row",
-    backgroundColor: Colors.card,
-    borderRadius: 22,
+  catPillWrap: {
+    borderRadius: 50,
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-    alignItems: "center",
   },
-  itemImageContainer: {
-    width: 90,
-    height: 120,
+  catPillFilled: {
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 50,
+  },
+  catPillActiveText: {
+    fontSize: 13,
+    fontFamily: "CormorantGaramond_600SemiBold",
+    color: "#0B0B0F",
+    letterSpacing: 0.3,
+  },
+  catPillInactive: {
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 50,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  catPillInactiveText: {
+    fontSize: 13,
+    fontFamily: "CormorantGaramond_400Regular",
+    color: "rgba(185,185,195,0.75)",
+    letterSpacing: 0.3,
+  },
+  listContent: {
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  itemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(20,20,28,0.78)",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(214,162,74,0.25)",
+    overflow: "hidden",
+  },
+  thumbContainer: {
+    width: 80,
+    height: 90,
     alignItems: "center",
     justifyContent: "center",
   },
-  itemImage: {
-    width: 70,
-    height: 100,
+  thumbImage: {
+    width: 60,
+    height: 78,
   },
-  itemInfo: {
+  itemCenter: {
     flex: 1,
     paddingVertical: 14,
     paddingLeft: 4,
-    gap: 3,
-  },
-  itemBrand: {
-    fontSize: 10,
-    color: Colors.textGold,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    fontFamily: "CormorantGaramond_400Regular",
+    gap: 4,
   },
   itemName: {
     fontSize: 15,
-    color: Colors.textPrimary,
-    fontFamily: "CormorantGaramond_600SemiBold",
-    lineHeight: 20,
-  },
-  itemMeta: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    fontFamily: "CormorantGaramond_400Regular",
-    marginTop: 2,
-  },
-  quantityRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginTop: 10,
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderRadius: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    alignSelf: "flex-start",
-  },
-  qtyBtn: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  qtyText: {
-    fontSize: 15,
-    color: Colors.textPrimary,
     fontFamily: "PlayfairDisplay_700Bold",
-    minWidth: 20,
-    textAlign: "center",
+    color: Colors.textPrimary,
+    letterSpacing: 0.3,
   },
-  itemRight: {
-    paddingRight: 14,
-    paddingVertical: 14,
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    height: 120,
-  },
-  removeBtn: {
-    padding: 4,
+  starsRow: {
+    flexDirection: "row",
+    gap: 2,
   },
   itemPrice: {
     fontSize: 16,
-    color: Colors.textGold,
     fontFamily: "PlayfairDisplay_700Bold",
+    color: Colors.textGold,
+    letterSpacing: 0.5,
+    marginTop: 2,
   },
-  itemUnitPrice: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    fontFamily: "CormorantGaramond_400Regular",
+  itemRight: {
+    paddingRight: 12,
+    alignItems: "flex-end",
+    justifyContent: "center",
   },
-  summaryContainer: {
+  qtyControl: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    overflow: "hidden",
+    height: 34,
+  },
+  qtyBtn: {
+    paddingHorizontal: 10,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  qtyNum: {
+    fontSize: 14,
+    fontFamily: "PlayfairDisplay_700Bold",
+    color: Colors.textPrimary,
+    minWidth: 18,
+    textAlign: "center",
+  },
+  qtyBtnAdd: {
+    borderRadius: 0,
+    overflow: "hidden",
+    height: 34,
+  },
+  qtyBtnAddGrad: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    height: 34,
+    gap: 3,
+  },
+  qtyAddText: {
+    fontSize: 12,
+    fontFamily: "CormorantGaramond_600SemiBold",
+    color: "#0B0B0F",
+    letterSpacing: 0.3,
+  },
+  summaryArea: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingTop: 20,
   },
-  summaryBorder: {
+  summaryFade: {
     position: "absolute",
-    top: 0,
-    left: 20,
-    right: 20,
+    top: -30,
+    left: 0,
+    right: 0,
+    height: 30,
+  },
+  summaryBg: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: Colors.background,
+  },
+  summaryDivider: {
     height: 1,
     backgroundColor: "rgba(214,162,74,0.2)",
+    marginBottom: 14,
   },
   summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 10,
+    marginBottom: 8,
   },
   summaryLabel: {
-    fontSize: 14,
-    color: Colors.textSecondary,
+    fontSize: 15,
     fontFamily: "CormorantGaramond_400Regular",
-    letterSpacing: 0.2,
+    color: "rgba(185,185,195,0.8)",
+    letterSpacing: 0.3,
   },
   summaryValue: {
-    fontSize: 14,
-    color: Colors.textPrimary,
+    fontSize: 15,
     fontFamily: "CormorantGaramond_600SemiBold",
+    color: Colors.textPrimary,
+    letterSpacing: 0.3,
   },
   totalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 4,
     marginBottom: 16,
-    paddingTop: 10,
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.06)",
   },
   totalLabel: {
-    fontSize: 18,
-    color: Colors.textPrimary,
+    fontSize: 20,
     fontFamily: "PlayfairDisplay_700Bold",
+    color: Colors.textPrimary,
+    letterSpacing: 0.5,
   },
   totalValue: {
     fontSize: 22,
-    color: Colors.textGold,
     fontFamily: "PlayfairDisplay_700Bold",
+    color: Colors.textGold,
+    letterSpacing: 0.5,
   },
   checkoutBtn: {
-    borderRadius: 18,
+    borderRadius: 16,
     overflow: "hidden",
   },
-  checkoutGradient: {
+  checkoutGrad: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 16,
     gap: 10,
-    borderRadius: 18,
+    borderRadius: 16,
   },
   checkoutText: {
     fontSize: 16,
-    color: "#0B0B0F",
     fontFamily: "PlayfairDisplay_700Bold",
+    color: "#0B0B0F",
     letterSpacing: 0.5,
   },
   emptyState: {
@@ -380,28 +451,30 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 14,
+    paddingHorizontal: 40,
   },
-  emptyIcon: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+  emptyIconCircle: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
     backgroundColor: "rgba(255,255,255,0.04)",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
+    borderColor: "rgba(255,255,255,0.07)",
   },
   emptyTitle: {
     fontSize: 22,
-    color: Colors.textPrimary,
     fontFamily: "PlayfairDisplay_700Bold",
+    color: Colors.textPrimary,
+    letterSpacing: 0.4,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: Colors.textSecondary,
     fontFamily: "CormorantGaramond_400Regular",
+    color: "rgba(185,185,195,0.65)",
     textAlign: "center",
-    paddingHorizontal: 40,
     lineHeight: 22,
+    letterSpacing: 0.3,
   },
 });

@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
+import { ScreenBackground } from "@/components/ScreenBackground";
 
 interface MenuItemProps {
   icon: React.ComponentProps<typeof Ionicons>["name"];
@@ -60,7 +61,7 @@ export default function ProfileScreen() {
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
 
   return (
-    <View style={styles.container}>
+    <ScreenBackground>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
@@ -193,7 +194,7 @@ export default function ProfileScreen() {
 
         <Text style={styles.versionText}>HD Xquisite Liquors v1.0.0</Text>
       </ScrollView>
-    </View>
+    </ScreenBackground>
   );
 }
 

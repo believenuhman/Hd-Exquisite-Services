@@ -9,6 +9,7 @@ import {
   Dimensions,
   Platform,
   Image,
+  ImageBackground,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -18,32 +19,63 @@ import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
 import { PRODUCTS } from "@/data/products";
 import { useCart } from "@/context/CartContext";
+import { GoldButton } from "@/components/GoldButton";
 
 const { width, height } = Dimensions.get("window");
+const UD = Platform.OS !== "web";
 
 export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const { addToCart, items } = useCart();
-  const [addedToCart, setAddedToCart] = useState(false);
+  const [addedFeedback, setAddedFeedback] = useState(false);
 
-  const buttonScale = useRef(new Animated.Value(1)).current;
-  const glowAnim = useRef(new Animated.Value(0)).current;
+  const bottleScale = useRef(new Animated.Value(0.85)).current;
+  const bottleOpacity = useRef(new Animated.Value(0)).current;
+  const contentOpacity = useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    Animated.sequence([
+      Animated.parallel([
+        Animated.spring(bottleScale, {
+          toValue: 1,
+          useNativeDriver: UD,
+          tension: 60,
+          friction: 9,
+        }),
+        Animated.timing(bottleOpacity, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: UD,
+        }),
+      ]),
+      Animated.timing(contentOpacity, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: UD,
+      }),
+    ]).start();
+  }, []);
 
   const product = PRODUCTS.find((p) => p.id === id);
   const cartItem = items.find((i) => i.product.id === id);
+
+  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const botPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   if (!product) {
     return (
       <View style={styles.container}>
         <Pressable
-          style={[styles.backBtn, { top: (Platform.OS === "web" ? 67 : insets.top) + 12 }]}
+          style={[styles.backBtn, { top: topPad + 12 }]}
           onPress={() => router.back()}
         >
-          <Ionicons name="arrow-back" size={22} color={Colors.textPrimary} />
+          <View style={styles.navBtnInner}>
+            <Ionicons name="arrow-back" size={20} color={Colors.textPrimary} />
+          </View>
         </Pressable>
-        <View style={styles.errorState}>
-          <Text style={styles.errorText}>Product not found</Text>
+        <View style={styles.notFoundState}>
+          <Text style={styles.notFoundText}>Product not found</Text>
         </View>
       </View>
     );
@@ -51,26 +83,12 @@ export default function ProductDetailScreen() {
 
   const fullStars = Math.floor(product.rating);
   const hasHalf = product.rating % 1 >= 0.5;
-  const topPadding = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
 
   const handleAddToCart = () => {
     addToCart(product);
-    setAddedToCart(true);
+    setAddedFeedback(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Animated.sequence([
-      Animated.spring(buttonScale, {
-        toValue: 0.95,
-        useNativeDriver: true,
-        speed: 30,
-      }),
-      Animated.spring(buttonScale, {
-        toValue: 1,
-        useNativeDriver: true,
-        speed: 30,
-      }),
-    ]).start();
-    setTimeout(() => setAddedToCart(false), 2000);
+    setTimeout(() => setAddedFeedback(false), 2000);
   };
 
   const handleBuyNow = () => {
@@ -81,22 +99,42 @@ export default function ProductDetailScreen() {
 
   return (
     <View style={styles.container}>
+      <ImageBackground
+        source={require("@/assets/images/particle-bg.png")}
+        style={StyleSheet.absoluteFill}
+        resizeMode="cover"
+      />
+      <LinearGradient
+        colors={["rgba(11,11,15,0.35)", "rgba(11,11,15,0.55)", Colors.background]}
+        style={StyleSheet.absoluteFill}
+        locations={[0, 0.45, 1]}
+      />
+
       <Pressable
-        style={[styles.backBtn, { top: topPadding + 12 }]}
+        style={[styles.backBtn, { top: topPad + 12 }]}
         onPress={() => router.back()}
         hitSlop={8}
       >
-        <View style={styles.backBtnInner}>
+        <View style={styles.navBtnInner}>
           <Ionicons name="arrow-back" size={20} color={Colors.textPrimary} />
+        </View>
+      </Pressable>
+
+      <Pressable
+        style={[styles.menuBtn, { top: topPad + 12 }]}
+        hitSlop={8}
+      >
+        <View style={styles.navBtnInner}>
+          <Ionicons name="ellipsis-horizontal" size={20} color={Colors.textPrimary} />
         </View>
       </Pressable>
 
       {cartItem && (
         <Pressable
-          style={[styles.cartIndicator, { top: topPadding + 12 }]}
+          style={[styles.cartBadgeBtn, { top: topPad + 12 }]}
           onPress={() => router.push("/cart")}
         >
-          <View style={styles.cartIndicatorInner}>
+          <View style={styles.navBtnInner}>
             <Ionicons name="bag" size={20} color={Colors.goldAccent} />
             <View style={styles.cartBadge}>
               <Text style={styles.cartBadgeText}>{cartItem.quantity}</Text>
@@ -105,45 +143,39 @@ export default function ProductDetailScreen() {
         </Pressable>
       )}
 
-      <ScrollView
-        style={{ flex: 1 }}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: bottomPadding + 120 },
-        ]}
-      >
-        <View style={styles.heroSection}>
-          <LinearGradient
-            colors={[
-              "rgba(214,162,74,0.15)",
-              Colors.background,
-            ]}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={styles.glowOrb} />
-          <View style={styles.glowOrb2} />
+      <View style={[styles.heroArea, { paddingTop: topPad + 54 }]}>
+        <View style={styles.glowOrbLarge} />
+        <View style={styles.glowOrbMid} />
 
+        <Animated.View
+          style={{
+            opacity: bottleOpacity,
+            transform: [{ scale: bottleScale }],
+          }}
+        >
           <Image
             source={product.image}
             style={styles.bottleImage}
             resizeMode="contain"
           />
-        </View>
+        </Animated.View>
+      </View>
 
-        <View style={styles.infoSection}>
+      <Animated.View style={[styles.bottomSheet, { opacity: contentOpacity }]}>
+        <LinearGradient
+          colors={["rgba(11,11,15,0.0)", Colors.background]}
+          style={[styles.fadeGradient, { pointerEvents: "none" } as any]}
+        />
+
+        <View style={[styles.contentArea, { paddingBottom: botPad + 12 }]}>
           <View style={styles.brandRow}>
-            <Text style={styles.brandText}>{product.brand}</Text>
-            <View style={styles.tagRow}>
-              {product.tags.slice(0, 1).map((t) => (
-                <View key={t} style={styles.tag}>
-                  <Text style={styles.tagText}>{t}</Text>
-                </View>
-              ))}
+            <Text style={styles.brandLabel}>{product.brand}</Text>
+            <View style={styles.volBadge}>
+              <Text style={styles.volText}>{product.volume}</Text>
             </View>
           </View>
 
-          <Text style={styles.productName}>{product.name}</Text>
+          <Text style={styles.productTitle}>{product.name}</Text>
 
           <View style={styles.ratingRow}>
             {[1, 2, 3, 4, 5].map((i) => (
@@ -160,90 +192,37 @@ export default function ProductDetailScreen() {
                 color={Colors.goldAccent}
               />
             ))}
-            <Text style={styles.ratingValue}>{product.rating}</Text>
-            <Text style={styles.reviewCount}>
-              ({product.reviews.toLocaleString()} reviews)
-            </Text>
+            <Text style={styles.ratingNum}>{product.rating}</Text>
           </View>
+
+          <Text style={styles.category}>
+            {product.tags[0]} · {product.abv} ABV
+          </Text>
+
+          <Text style={styles.description} numberOfLines={2}>
+            {product.description}
+          </Text>
 
           <Text style={styles.price}>${product.price.toFixed(2)}</Text>
 
-          <View style={styles.metaCards}>
-            <View style={styles.metaCard}>
-              <Ionicons name="wine-outline" size={18} color={Colors.goldAccent} />
-              <Text style={styles.metaLabel}>Volume</Text>
-              <Text style={styles.metaValue}>{product.volume}</Text>
-            </View>
-            <View style={styles.metaCard}>
-              <Ionicons name="flame-outline" size={18} color={Colors.goldAccent} />
-              <Text style={styles.metaLabel}>ABV</Text>
-              <Text style={styles.metaValue}>{product.abv}</Text>
-            </View>
-            <View style={styles.metaCard}>
-              <Ionicons name="ribbon-outline" size={18} color={Colors.goldAccent} />
-              <Text style={styles.metaLabel}>Category</Text>
-              <Text style={styles.metaValue}>{product.category}</Text>
-            </View>
-          </View>
-
-          <View style={styles.descSection}>
-            <Text style={styles.descTitle}>About</Text>
-            <Text style={styles.descText}>{product.description}</Text>
-          </View>
-
-          <View style={styles.tagsRow}>
-            {product.tags.map((t) => (
-              <View key={t} style={styles.tagChip}>
-                <Text style={styles.tagChipText}>{t}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      </ScrollView>
-
-      <View
-        style={[
-          styles.ctaContainer,
-          { paddingBottom: bottomPadding + (Platform.OS === "web" ? 20 : 16) },
-        ]}
-      >
-        <LinearGradient
-          colors={["rgba(11,11,15,0)", Colors.background]}
-          style={styles.ctaGradient}
-        />
-        <View style={styles.ctaRow}>
-          <Animated.View style={[styles.addToCartBtn, { transform: [{ scale: buttonScale }] }]}>
-            <Pressable
-              style={styles.addToCartPressable}
+          <View style={styles.buttonsArea}>
+            <GoldButton
+              label={addedFeedback ? "Added!" : "Add to Cart"}
               onPress={handleAddToCart}
-            >
-              {addedToCart ? (
-                <>
-                  <Ionicons name="checkmark" size={18} color={Colors.goldAccent} />
-                  <Text style={styles.addToCartText}>Added!</Text>
-                </>
-              ) : (
-                <>
-                  <Ionicons name="bag-add-outline" size={18} color={Colors.goldAccent} />
-                  <Text style={styles.addToCartText}>Add to Cart</Text>
-                </>
-              )}
-            </Pressable>
-          </Animated.View>
-
-          <Pressable style={styles.buyNowBtn} onPress={handleBuyNow}>
-            <LinearGradient
-              colors={[Colors.goldStart, Colors.goldEnd]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.buyNowGradient}
-            >
-              <Text style={styles.buyNowText}>Buy Now</Text>
-              <Ionicons name="arrow-forward" size={18} color="#0B0B0F" />
-            </LinearGradient>
-          </Pressable>
+              variant="outline"
+              icon={addedFeedback ? "checkmark" : "bag-add-outline"}
+              iconPosition="left"
+            />
+            <GoldButton
+              label="Buy Now"
+              onPress={handleBuyNow}
+              variant="filled"
+              icon="arrow-forward"
+              iconPosition="right"
+            />
+          </View>
         </View>
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -255,25 +234,20 @@ const styles = StyleSheet.create({
   },
   backBtn: {
     position: "absolute",
-    left: 20,
+    left: 16,
     zIndex: 10,
   },
-  backBtnInner: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-  },
-  cartIndicator: {
+  menuBtn: {
     position: "absolute",
-    right: 20,
+    right: 16,
     zIndex: 10,
   },
-  cartIndicatorInner: {
+  cartBadgeBtn: {
+    position: "absolute",
+    right: 64,
+    zIndex: 10,
+  },
+  navBtnInner: {
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -281,7 +255,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.1)",
   },
   cartBadge: {
     position: "absolute",
@@ -299,238 +273,119 @@ const styles = StyleSheet.create({
     fontFamily: "PlayfairDisplay_700Bold",
     color: "#0B0B0F",
   },
-  scrollContent: {
-    paddingTop: 0,
-  },
-  heroSection: {
-    height: height * 0.42,
+  heroArea: {
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
+    height: height * 0.48,
   },
-  glowOrb: {
+  glowOrbLarge: {
     position: "absolute",
-    width: 220,
-    height: 220,
-    borderRadius: 110,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: "rgba(214,162,74,0.13)",
+  },
+  glowOrbMid: {
+    position: "absolute",
+    width: 160,
+    height: 160,
+    borderRadius: 80,
     backgroundColor: "rgba(214,162,74,0.1)",
-    top: "50%",
-    left: "50%",
-    marginTop: -110,
-    marginLeft: -110,
-  },
-  glowOrb2: {
-    position: "absolute",
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: "rgba(214,162,74,0.08)",
-    top: "50%",
-    left: "50%",
-    marginTop: -70,
-    marginLeft: -70,
   },
   bottleImage: {
-    width: width * 0.42,
-    height: height * 0.38,
+    width: width * 0.45,
+    height: height * 0.42,
   },
-  infoSection: {
-    paddingHorizontal: 24,
-    paddingTop: 8,
+  bottomSheet: {
+    flex: 1,
+    position: "relative",
+  },
+  fadeGradient: {
+    height: 40,
+    position: "absolute",
+    top: -40,
+    left: 0,
+    right: 0,
+  },
+  contentArea: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    gap: 8,
   },
   brandRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 6,
   },
-  brandText: {
-    fontSize: 13,
+  brandLabel: {
+    fontSize: 12,
     color: Colors.textGold,
-    letterSpacing: 2,
+    letterSpacing: 2.5,
     textTransform: "uppercase",
     fontFamily: "CormorantGaramond_400Regular",
   },
-  tagRow: {
-    flexDirection: "row",
-    gap: 6,
-  },
-  tag: {
+  volBadge: {
     backgroundColor: "rgba(214,162,74,0.1)",
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderWidth: 1,
-    borderColor: "rgba(214,162,74,0.15)",
+    borderColor: "rgba(214,162,74,0.2)",
   },
-  tagText: {
+  volText: {
     fontSize: 11,
     color: Colors.textGold,
     fontFamily: "CormorantGaramond_400Regular",
-    letterSpacing: 0.3,
+    letterSpacing: 0.5,
   },
-  productName: {
-    fontSize: 36,
-    color: Colors.textPrimary,
+  productTitle: {
+    fontSize: 34,
     fontFamily: "PlayfairDisplay_700Bold",
-    lineHeight: 44,
-    letterSpacing: 0.3,
-    marginBottom: 10,
+    color: Colors.textPrimary,
+    letterSpacing: 0.5,
+    lineHeight: 42,
   },
   ratingRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    marginBottom: 14,
   },
-  ratingValue: {
+  ratingNum: {
     fontSize: 14,
     color: Colors.textPrimary,
     fontFamily: "CormorantGaramond_600SemiBold",
     marginLeft: 6,
+    letterSpacing: 0.3,
   },
-  reviewCount: {
-    fontSize: 13,
-    color: Colors.textSecondary,
+  category: {
+    fontSize: 14,
+    color: "rgba(185,185,195,0.75)",
     fontFamily: "CormorantGaramond_400Regular",
+    letterSpacing: 0.5,
+  },
+  description: {
+    fontSize: 14,
+    color: "rgba(185,185,195,0.65)",
+    fontFamily: "CormorantGaramond_400Regular",
+    lineHeight: 22,
+    letterSpacing: 0.2,
   },
   price: {
-    fontSize: 38,
-    color: Colors.textGold,
+    fontSize: 30,
     fontFamily: "PlayfairDisplay_700Bold",
-    marginBottom: 20,
-    letterSpacing: 0.5,
-  },
-  metaCards: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 24,
-  },
-  metaCard: {
-    flex: 1,
-    backgroundColor: Colors.card,
-    borderRadius: 18,
-    paddingVertical: 14,
-    alignItems: "center",
-    gap: 4,
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-  },
-  metaLabel: {
-    fontSize: 10,
-    color: Colors.textSecondary,
-    fontFamily: "CormorantGaramond_400Regular",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-  },
-  metaValue: {
-    fontSize: 13,
-    color: Colors.textPrimary,
-    fontFamily: "CormorantGaramond_600SemiBold",
-  },
-  descSection: {
-    marginBottom: 20,
-  },
-  descTitle: {
-    fontSize: 20,
-    color: Colors.textPrimary,
-    fontFamily: "PlayfairDisplay_700Bold",
-    marginBottom: 10,
-    letterSpacing: 0.2,
-  },
-  descText: {
-    fontSize: 15,
-    color: Colors.textSecondary,
-    fontFamily: "CormorantGaramond_400Regular",
-    lineHeight: 24,
-    letterSpacing: 0.2,
-  },
-  tagsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 16,
-  },
-  tagChip: {
-    backgroundColor: "rgba(214,162,74,0.08)",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderWidth: 1,
-    borderColor: "rgba(214,162,74,0.12)",
-  },
-  tagChipText: {
-    fontSize: 12,
     color: Colors.textGold,
-    fontFamily: "CormorantGaramond_400Regular",
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
-  ctaContainer: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    backgroundColor: Colors.background,
-  },
-  ctaGradient: {
-    position: "absolute",
-    top: -30,
-    left: 0,
-    right: 0,
-    height: 30,
-  },
-  ctaRow: {
-    flexDirection: "row",
+  buttonsArea: {
     gap: 12,
+    marginTop: 4,
   },
-  addToCartBtn: {
-    flex: 1,
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: Colors.goldAccent,
-    overflow: "hidden",
-  },
-  addToCartPressable: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 16,
-    gap: 8,
-  },
-  addToCartText: {
-    fontSize: 15,
-    color: Colors.goldAccent,
-    fontFamily: "PlayfairDisplay_700Bold",
-    letterSpacing: 0.3,
-  },
-  buyNowBtn: {
-    flex: 1.4,
-    borderRadius: 18,
-    overflow: "hidden",
-  },
-  buyNowGradient: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 16,
-    gap: 8,
-    borderRadius: 18,
-  },
-  buyNowText: {
-    fontSize: 15,
-    color: "#0B0B0F",
-    fontFamily: "PlayfairDisplay_700Bold",
-    letterSpacing: 0.3,
-  },
-  errorState: {
+  notFoundState: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  errorText: {
+  notFoundText: {
     fontSize: 18,
     color: Colors.textSecondary,
     fontFamily: "CormorantGaramond_400Regular",
