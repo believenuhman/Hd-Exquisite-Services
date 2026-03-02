@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Dimensions,
   Platform,
   Image,
-  ImageBackground,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -17,67 +17,65 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
-import { PRODUCTS } from "@/data/products";
+import { supabase, Product } from "@/lib/supabase";
+import { ScreenBackground } from "@/components/ScreenBackground";
 import { useCart } from "@/context/CartContext";
-import { GoldButton } from "@/components/GoldButton";
+import { useAppSettings } from "@/context/AppSettingsContext";
 
 const { width, height } = Dimensions.get("window");
 const UD = Platform.OS !== "web";
+const FALLBACK_IMG = require("@/assets/images/hennessy.png");
 
 export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
-  const { addToCart, items } = useCart();
-  const [addedFeedback, setAddedFeedback] = useState(false);
+  const { addToCart } = useCart();
+  const { formatPrice } = useAppSettings();
 
-  const bottleScale = useRef(new Animated.Value(0.85)).current;
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [added, setAdded] = useState(false);
+
+  const bottleScale = useRef(new Animated.Value(0.7)).current;
   const bottleOpacity = useRef(new Animated.Value(0)).current;
   const contentOpacity = useRef(new Animated.Value(0)).current;
 
-  React.useEffect(() => {
-    Animated.sequence([
+  useEffect(() => {
+    if (!id) return;
+    supabase.from("products").select("*").eq("id", id).single().then(({ data }) => {
+      if (data) setProduct(data as Product);
+      setLoading(false);
       Animated.parallel([
-        Animated.spring(bottleScale, {
-          toValue: 1,
-          useNativeDriver: UD,
-          tension: 60,
-          friction: 9,
-        }),
-        Animated.timing(bottleOpacity, {
-          toValue: 1,
-          duration: 500,
-          useNativeDriver: UD,
-        }),
-      ]),
-      Animated.timing(contentOpacity, {
-        toValue: 1,
-        duration: 400,
-        useNativeDriver: UD,
-      }),
-    ]).start();
-  }, []);
+        Animated.spring(bottleScale, { toValue: 1, tension: 60, friction: 8, useNativeDriver: UD }),
+        Animated.timing(bottleOpacity, { toValue: 1, duration: 400, useNativeDriver: UD }),
+        Animated.timing(contentOpacity, { toValue: 1, duration: 500, delay: 200, useNativeDriver: UD }),
+      ]).start();
+    });
+  }, [id]);
 
-  const product = PRODUCTS.find((p) => p.id === id);
-  const cartItem = items.find((i) => i.product.id === id);
+  const botPad = insets.bottom + (Platform.OS === "web" ? 34 : 0);
+  const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const botPad = Platform.OS === "web" ? 34 : insets.bottom;
+  if (loading) {
+    return (
+      <ScreenBackground>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <ActivityIndicator color={Colors.goldAccent} size="large" />
+        </View>
+      </ScreenBackground>
+    );
+  }
 
   if (!product) {
     return (
-      <View style={styles.container}>
-        <Pressable
-          style={[styles.backBtn, { top: topPad + 12 }]}
-          onPress={() => router.back()}
-        >
-          <View style={styles.navBtnInner}>
-            <Ionicons name="arrow-back" size={20} color={Colors.textPrimary} />
-          </View>
-        </Pressable>
-        <View style={styles.notFoundState}>
-          <Text style={styles.notFoundText}>Product not found</Text>
+      <ScreenBackground>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32 }}>
+          <Text style={styles.notFound}>Product not found</Text>
+          <Pressable onPress={() => router.back()} style={styles.backPressable}>
+            <Text style={styles.backLink}>Go Back</Text>
+          </Pressable>
         </View>
-      </View>
+      </ScreenBackground>
     );
   }
 
@@ -86,81 +84,39 @@ export default function ProductDetailScreen() {
 
   const handleAddToCart = () => {
     addToCart(product);
-    setAddedFeedback(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setTimeout(() => setAddedFeedback(false), 2000);
+    setAdded(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setTimeout(() => setAdded(false), 2000);
   };
 
   const handleBuyNow = () => {
     addToCart(product);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    router.push("/cart");
+    router.push("/checkout");
   };
 
   return (
-    <View style={styles.container}>
-      <ImageBackground
-        source={require("@/assets/images/particle-bg.png")}
-        style={StyleSheet.absoluteFill}
-        resizeMode="cover"
-      />
-      <LinearGradient
-        colors={["rgba(11,11,15,0.35)", "rgba(11,11,15,0.55)", Colors.background]}
-        style={StyleSheet.absoluteFill}
-        locations={[0, 0.45, 1]}
-      />
-
-      <Pressable
-        style={[styles.backBtn, { top: topPad + 12 }]}
-        onPress={() => router.back()}
-        hitSlop={8}
-      >
-        <View style={styles.navBtnInner}>
+    <ScreenBackground>
+      {/* Back button */}
+      <View style={[styles.backRow, { top: topPad + 12 }]}>
+        <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={20} color={Colors.textPrimary} />
-        </View>
-      </Pressable>
-
-      <Pressable
-        style={[styles.menuBtn, { top: topPad + 12 }]}
-        hitSlop={8}
-      >
-        <View style={styles.navBtnInner}>
-          <Ionicons name="ellipsis-horizontal" size={20} color={Colors.textPrimary} />
-        </View>
-      </Pressable>
-
-      {cartItem && (
-        <Pressable
-          style={[styles.cartBadgeBtn, { top: topPad + 12 }]}
-          onPress={() => router.push("/cart")}
-        >
-          <View style={styles.navBtnInner}>
-            <Ionicons name="bag" size={20} color={Colors.goldAccent} />
-            <View style={styles.cartBadge}>
-              <Text style={styles.cartBadgeText}>{cartItem.quantity}</Text>
-            </View>
-          </View>
         </Pressable>
-      )}
+      </View>
 
-      <View style={[styles.heroArea, { paddingTop: topPad + 54 }]}>
-        <View style={styles.glowOrbLarge} />
-        <View style={styles.glowOrbMid} />
-
-        <Animated.View
-          style={{
-            opacity: bottleOpacity,
-            transform: [{ scale: bottleScale }],
-          }}
-        >
+      {/* Hero bottle */}
+      <View style={styles.heroArea}>
+        <View style={[styles.glow1, { top: height * 0.05 }]} />
+        <View style={[styles.glow2, { top: height * 0.1 }]} />
+        <Animated.View style={[styles.bottleWrap, { opacity: bottleOpacity, transform: [{ scale: bottleScale }] }]}>
           <Image
-            source={product.image}
-            style={styles.bottleImage}
+            source={product.image_url ? { uri: product.image_url } : FALLBACK_IMG}
+            style={styles.bottleImg}
             resizeMode="contain"
           />
         </Animated.View>
       </View>
 
+      {/* Content sheet */}
       <Animated.View style={[styles.bottomSheet, { opacity: contentOpacity }]}>
         <LinearGradient
           colors={["rgba(11,11,15,0.0)", Colors.background]}
@@ -169,225 +125,111 @@ export default function ProductDetailScreen() {
 
         <View style={[styles.contentArea, { paddingBottom: botPad + 12 }]}>
           <View style={styles.brandRow}>
-            <Text style={styles.brandLabel}>{product.brand}</Text>
-            <View style={styles.volBadge}>
-              <Text style={styles.volText}>{product.volume}</Text>
+            <Text style={styles.brandLabel}>{product.category}</Text>
+            <View style={styles.ratingBadge}>
+              <Ionicons name="star" size={12} color={Colors.goldAccent} />
+              <Text style={styles.ratingBadgeText}>{product.rating}</Text>
             </View>
           </View>
 
-          <Text style={styles.productTitle}>{product.name}</Text>
+          <Text style={styles.productName}>{product.name}</Text>
 
-          <View style={styles.ratingRow}>
-            {[1, 2, 3, 4, 5].map((i) => (
-              <Ionicons
-                key={i}
-                name={
-                  i <= fullStars
-                    ? "star"
-                    : i === fullStars + 1 && hasHalf
-                    ? "star-half"
-                    : "star-outline"
-                }
-                size={16}
-                color={Colors.goldAccent}
-              />
+          <View style={styles.starsRow}>
+            {[1,2,3,4,5].map(i => (
+              <Ionicons key={i} name={i <= fullStars ? "star" : i === fullStars + 1 && hasHalf ? "star-half" : "star-outline"} size={16} color={Colors.goldAccent} />
             ))}
-            <Text style={styles.ratingNum}>{product.rating}</Text>
           </View>
 
-          <Text style={styles.category}>
-            {product.tags[0]} · {product.abv} ABV
-          </Text>
+          <ScrollView style={styles.descScroll} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+            <Text style={styles.description}>{product.description}</Text>
+          </ScrollView>
 
-          <Text style={styles.description} numberOfLines={2}>
-            {product.description}
-          </Text>
+          <View style={styles.priceRow}>
+            <Text style={styles.price}>{formatPrice(product.price)}</Text>
+            <Text style={styles.stockLabel}>
+              {product.stock_qty > 0 ? `${product.stock_qty} in stock` : "Out of stock"}
+            </Text>
+          </View>
 
-          <Text style={styles.price}>${product.price.toFixed(2)}</Text>
-
-          <View style={styles.buttonsArea}>
-            <GoldButton
-              label={addedFeedback ? "Added!" : "Add to Cart"}
-              onPress={handleAddToCart}
-              variant="outline"
-              icon={addedFeedback ? "checkmark" : "bag-add-outline"}
-              iconPosition="left"
-            />
-            <GoldButton
-              label="Buy Now"
-              onPress={handleBuyNow}
-              variant="filled"
-              icon="arrow-forward"
-              iconPosition="right"
-            />
+          <View style={styles.ctaRow}>
+            <Pressable onPress={handleAddToCart} disabled={product.stock_qty === 0} style={styles.outlineBtn}>
+              <Text style={styles.outlineBtnText}>{added ? "Added ✓" : "Add to Cart"}</Text>
+            </Pressable>
+            <Pressable onPress={handleBuyNow} disabled={product.stock_qty === 0} style={[styles.goldBtn, { flex: 1 }]}>
+              <LinearGradient colors={[Colors.goldStart, Colors.goldEnd]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.goldGrad}>
+                <Text style={styles.goldBtnText}>Buy Now</Text>
+              </LinearGradient>
+            </Pressable>
           </View>
         </View>
       </Animated.View>
-    </View>
+    </ScreenBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
+  backRow: { position: "absolute", left: 16, zIndex: 20 },
   backBtn: {
-    position: "absolute",
-    left: 16,
-    zIndex: 10,
-  },
-  menuBtn: {
-    position: "absolute",
-    right: 16,
-    zIndex: 10,
-  },
-  cartBadgeBtn: {
-    position: "absolute",
-    right: 64,
-    zIndex: 10,
-  },
-  navBtnInner: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-  },
-  cartBadge: {
-    position: "absolute",
-    top: -2,
-    right: -2,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: Colors.goldAccent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cartBadgeText: {
-    fontSize: 9,
-    fontFamily: "PlayfairDisplay_700Bold",
-    color: "#0B0B0F",
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: "rgba(11,11,15,0.6)",
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.1)",
   },
   heroArea: {
+    height: height * 0.46,
     alignItems: "center",
     justifyContent: "center",
-    height: height * 0.48,
+    overflow: "hidden",
   },
-  glowOrbLarge: {
+  glow1: {
     position: "absolute",
-    width: 260,
-    height: 260,
-    borderRadius: 130,
+    width: 280, height: 280, borderRadius: 140,
     backgroundColor: "rgba(214,162,74,0.13)",
+    left: width / 2 - 140,
   },
-  glowOrbMid: {
+  glow2: {
     position: "absolute",
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: "rgba(214,162,74,0.1)",
+    width: 180, height: 180, borderRadius: 90,
+    backgroundColor: "rgba(214,162,74,0.08)",
+    left: width / 2 - 90,
   },
-  bottleImage: {
-    width: width * 0.45,
-    height: height * 0.42,
-  },
-  bottomSheet: {
-    flex: 1,
-    position: "relative",
-  },
+  bottleWrap: { alignItems: "center", justifyContent: "center" },
+  bottleImg: { width: width * 0.48, height: height * 0.38, maxWidth: 220 },
+  bottomSheet: { flex: 1, position: "relative" },
   fadeGradient: {
-    height: 40,
     position: "absolute",
-    top: -40,
-    left: 0,
-    right: 0,
+    top: -60,
+    left: 0, right: 0,
+    height: 80,
   },
   contentArea: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    gap: 8,
-  },
-  brandRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  brandLabel: {
-    fontSize: 12,
-    color: Colors.textGold,
-    letterSpacing: 2.5,
-    textTransform: "uppercase",
-    fontFamily: "CormorantGaramond_400Regular",
-  },
-  volBadge: {
-    backgroundColor: "rgba(214,162,74,0.1)",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: "rgba(214,162,74,0.2)",
-  },
-  volText: {
-    fontSize: 11,
-    color: Colors.textGold,
-    fontFamily: "CormorantGaramond_400Regular",
-    letterSpacing: 0.5,
-  },
-  productTitle: {
-    fontSize: 34,
-    fontFamily: "PlayfairDisplay_700Bold",
-    color: Colors.textPrimary,
-    letterSpacing: 0.5,
-    lineHeight: 42,
-  },
-  ratingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-  },
-  ratingNum: {
-    fontSize: 14,
-    color: Colors.textPrimary,
-    fontFamily: "CormorantGaramond_600SemiBold",
-    marginLeft: 6,
-    letterSpacing: 0.3,
-  },
-  category: {
-    fontSize: 14,
-    color: "rgba(185,185,195,0.75)",
-    fontFamily: "CormorantGaramond_400Regular",
-    letterSpacing: 0.5,
-  },
-  description: {
-    fontSize: 14,
-    color: "rgba(185,185,195,0.65)",
-    fontFamily: "CormorantGaramond_400Regular",
-    lineHeight: 22,
-    letterSpacing: 0.2,
-  },
-  price: {
-    fontSize: 30,
-    fontFamily: "PlayfairDisplay_700Bold",
-    color: Colors.textGold,
-    letterSpacing: 0.8,
-  },
-  buttonsArea: {
-    gap: 12,
-    marginTop: 4,
-  },
-  notFoundState: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
+    paddingHorizontal: 24,
+    paddingTop: 8,
   },
-  notFoundText: {
-    fontSize: 18,
-    color: Colors.textSecondary,
-    fontFamily: "CormorantGaramond_400Regular",
+  brandRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
+  brandLabel: { fontFamily: "CormorantGaramond_600SemiBold", fontSize: 12, color: Colors.goldAccent, letterSpacing: 2.5, textTransform: "uppercase" },
+  ratingBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(214,162,74,0.12)", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
+  ratingBadgeText: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 12, color: Colors.goldAccent },
+  productName: { fontFamily: "PlayfairDisplay_900Black", fontSize: 28, color: Colors.textPrimary, letterSpacing: 0.5, marginBottom: 8, lineHeight: 34 },
+  starsRow: { flexDirection: "row", gap: 3, marginBottom: 12 },
+  descScroll: { maxHeight: 80, marginBottom: 12 },
+  description: { fontFamily: "CormorantGaramond_400Regular", fontSize: 15, color: "#B9B9C3", lineHeight: 22 },
+  priceRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 },
+  price: { fontFamily: "PlayfairDisplay_900Black", fontSize: 32, color: Colors.textGold },
+  stockLabel: { fontFamily: "CormorantGaramond_400Regular", fontSize: 13, color: Colors.textSecondary },
+  ctaRow: { flexDirection: "row", gap: 12 },
+  outlineBtn: {
+    flex: 1, height: 52, borderRadius: 14,
+    borderWidth: 1.5, borderColor: Colors.goldAccent,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(214,162,74,0.08)",
   },
+  outlineBtnText: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 14, color: Colors.goldAccent },
+  goldBtn: { height: 52, borderRadius: 14, overflow: "hidden" },
+  goldGrad: { flex: 1, alignItems: "center", justifyContent: "center" },
+  goldBtnText: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 14, color: "#000", letterSpacing: 0.5 },
+  notFound: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 22, color: Colors.textPrimary, marginBottom: 16 },
+  backPressable: { borderWidth: 1, borderColor: Colors.goldAccent, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 10 },
+  backLink: { color: Colors.goldAccent, fontFamily: "CormorantGaramond_600SemiBold", fontSize: 15 },
 });

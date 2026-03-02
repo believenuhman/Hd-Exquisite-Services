@@ -5,7 +5,9 @@ import React, {
   useMemo,
   ReactNode,
 } from "react";
-import { Product } from "@/data/products";
+import { Product } from "@/lib/supabase";
+
+export type { Product };
 
 export interface CartItem {
   product: Product;

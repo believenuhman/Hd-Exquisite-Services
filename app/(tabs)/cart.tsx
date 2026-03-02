@@ -12,13 +12,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 import { Colors } from "@/constants/colors";
 import { useCart, CartItem } from "@/context/CartContext";
+import { useAppSettings } from "@/context/AppSettingsContext";
 import { ScreenBackground } from "@/components/ScreenBackground";
-import { CATEGORIES } from "@/data/products";
 
-const SHIPPING = 9.99;
-const CATS = CATEGORIES.filter((c) => c !== "All");
+const CATS = ["Beers", "Whiskey", "Wine", "Vodka", "Rum"];
+const FALLBACK_IMG = require("@/assets/images/hennessy.png");
 
 function CartItemRow({ item }: { item: CartItem }) {
   const { updateQuantity, removeFromCart } = useCart();
@@ -32,7 +33,7 @@ function CartItemRow({ item }: { item: CartItem }) {
           style={StyleSheet.absoluteFill}
         />
         <Image
-          source={item.product.image}
+          source={item.product.image_url ? { uri: item.product.image_url } : FALLBACK_IMG}
           style={styles.thumbImage}
           resizeMode="contain"
         />
@@ -55,6 +56,7 @@ function CartItemRow({ item }: { item: CartItem }) {
         <Text style={styles.itemPrice}>
           ${(item.product.price * item.quantity).toFixed(2)}
         </Text>
+
       </View>
 
       <View style={styles.itemRight}>
@@ -94,11 +96,11 @@ function CartItemRow({ item }: { item: CartItem }) {
 
 export default function CartScreen() {
   const insets = useSafeAreaInsets();
-  const { items, subtotal, clearCart, totalItems } = useCart();
+  const { items, subtotal, clearCart } = useCart();
+  const { formatPrice } = useAppSettings();
   const [activeFilter, setActiveFilter] = useState("Beers");
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
-  const total = subtotal + (subtotal > 0 ? SHIPPING : 0);
 
   return (
     <ScreenBackground>
@@ -187,22 +189,23 @@ export default function CartScreen() {
 
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Subtotal:</Text>
-              <Text style={styles.summaryValue}>${subtotal.toFixed(2)}</Text>
+              <Text style={styles.summaryValue}>{formatPrice(subtotal)}</Text>
             </View>
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Shipping:</Text>
-              <Text style={styles.summaryValue}>${SHIPPING.toFixed(2)}</Text>
+              <Text style={styles.summaryLabel}>Delivery:</Text>
+              <Text style={styles.summaryValue}>Calculated at checkout</Text>
             </View>
             <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Total</Text>
-              <Text style={styles.totalValue}>${total.toFixed(2)}</Text>
+              <Text style={styles.totalLabel}>Subtotal</Text>
+              <Text style={styles.totalValue}>{formatPrice(subtotal)}</Text>
             </View>
 
             <Pressable
               style={styles.checkoutBtn}
-              onPress={() =>
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-              }
+              onPress={() => {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                router.push("/checkout");
+              }}
             >
               <LinearGradient
                 colors={[Colors.goldStart, Colors.goldEnd]}
