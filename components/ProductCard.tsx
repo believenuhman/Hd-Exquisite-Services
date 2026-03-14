@@ -89,7 +89,7 @@ export function ProductCard({
               hitSlop={10}
               style={styles.addBtn}
             >
-              <Ionicons name="add" size={18} color="#000" />
+              <Ionicons name="add" size={18} color="#fff" />
             </Pressable>
           </View>
         </View>
@@ -98,22 +98,27 @@ export function ProductCard({
   );
 }
 
+const CARD_BG   = "#121212";
+const IMG_AREA  = "#1C1828";
+
 const styles = StyleSheet.create({
   wrapper: { marginRight: 14 },
   card: {
     width: CARD_WIDTH,
     borderRadius: 18,
     overflow: "hidden",
-    backgroundColor: Colors.cardLight,
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: "rgba(228,161,43,0.18)",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.18,
+    shadowOpacity: 0.35,
     shadowRadius: 14,
     elevation: 6,
   },
   imageArea: {
     height: 158,
-    backgroundColor: "#F4EFE6",
+    backgroundColor: IMG_AREA,
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
@@ -145,7 +150,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    backgroundColor: Colors.goldAccent,
+    backgroundColor: "rgba(228,161,43,0.18)",
     borderRadius: 20,
     paddingHorizontal: 7,
     paddingVertical: 3,
@@ -153,17 +158,17 @@ const styles = StyleSheet.create({
   ratingPillText: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 10,
-    color: "#fff",
+    color: Colors.goldAccent,
   },
   infoArea: {
     padding: 10,
-    backgroundColor: Colors.cardLight,
+    backgroundColor: CARD_BG,
     gap: 6,
   },
   productName: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 12,
-    color: Colors.textDark,
+    color: "#FFFFFF",
     lineHeight: 16,
   },
   priceRow: {
@@ -172,15 +177,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   priceText: {
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "Inter_700Bold",
     fontSize: 15,
-    color: Colors.textDark,
+    color: Colors.goldAccent,
   },
   addBtn: {
     width: 28,
     height: 28,
     borderRadius: 8,
-    backgroundColor: Colors.goldAccent,
+    backgroundColor: Colors.magenta,
     alignItems: "center",
     justifyContent: "center",
   },

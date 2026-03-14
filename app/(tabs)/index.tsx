@@ -118,7 +118,7 @@ function GridCard({
               hitSlop={10}
               style={styles.gridAddBtn}
             >
-              <Ionicons name="add" size={16} color="#000" />
+              <Ionicons name="add" size={16} color="#fff" />
             </Pressable>
           </View>
         </View>
@@ -675,17 +675,19 @@ const styles = StyleSheet.create({
     width: GRID_CARD_W,
     borderRadius: 18,
     overflow: "hidden",
-    backgroundColor: Colors.cardLight,
+    backgroundColor: "#121212",
+    borderWidth: 1,
+    borderColor: "rgba(228,161,43,0.18)",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.4,
     shadowRadius: 10,
     elevation: 4,
   },
   gridCardInner: { flex: 1 },
   gridImgWrap: {
     height: 148,
-    backgroundColor: "#F4EFE6",
+    backgroundColor: "#1C1828",
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
@@ -714,7 +716,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    backgroundColor: Colors.goldAccent,
+    backgroundColor: "rgba(228,161,43,0.18)",
     borderRadius: 20,
     paddingHorizontal: 6,
     paddingVertical: 3,
@@ -722,17 +724,17 @@ const styles = StyleSheet.create({
   gridRatingText: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 9,
-    color: "#fff",
+    color: Colors.goldAccent,
   },
   gridInfo: {
     padding: 10,
-    backgroundColor: Colors.cardLight,
+    backgroundColor: "#121212",
     gap: 6,
   },
   gridName: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 12,
-    color: Colors.textDark,
+    color: "#FFFFFF",
     lineHeight: 16,
   },
   gridPriceRow: {
@@ -741,15 +743,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   gridPrice: {
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "Inter_700Bold",
     fontSize: 15,
-    color: Colors.textDark,
+    color: Colors.goldAccent,
   },
   gridAddBtn: {
     width: 28,
     height: 28,
     borderRadius: 8,
-    backgroundColor: Colors.goldAccent,
+    backgroundColor: Colors.magenta,
     alignItems: "center",
     justifyContent: "center",
   },

@@ -98,7 +98,7 @@ function SearchResultCard({
           hitSlop={8}
         >
           <View style={styles.addBtn}>
-            <Ionicons name="add" size={20} color="#000" />
+            <Ionicons name="add" size={20} color="#fff" />
           </View>
         </Pressable>
       </Pressable>
@@ -375,19 +375,21 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: Colors.cardLight,
+    backgroundColor: "#121212",
     borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(228,161,43,0.18)",
     overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.14,
+    shadowOpacity: 0.4,
     shadowRadius: 8,
     elevation: 4,
   },
   thumb: {
     width: 96,
     height: 100,
-    backgroundColor: "#F4EFE6",
+    backgroundColor: "#1C1828",
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
@@ -426,27 +428,27 @@ const styles = StyleSheet.create({
   itemName: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 13,
-    color: Colors.textDark,
+    color: "#FFFFFF",
     lineHeight: 17,
   },
   starsRow: { flexDirection: "row", alignItems: "center", gap: 2 },
   ratingNum: {
     fontFamily: "Inter_400Regular",
     fontSize: 11,
-    color: "#888",
+    color: Colors.goldAccent,
     marginLeft: 4,
   },
   priceText: {
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "Inter_700Bold",
     fontSize: 16,
-    color: Colors.textDark,
+    color: Colors.goldAccent,
   },
   addWrap: { paddingHorizontal: 14 },
   addBtn: {
     width: 38,
     height: 38,
     borderRadius: 12,
-    backgroundColor: Colors.goldAccent,
+    backgroundColor: Colors.magenta,
     alignItems: "center",
     justifyContent: "center",
   },
