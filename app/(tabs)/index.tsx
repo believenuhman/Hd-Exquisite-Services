@@ -195,8 +195,8 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* ── Top bar ─────────────────────────────── */}
-        <View style={[styles.topBar, { paddingTop: topPad + 14 }]}>
+        {/* ── Top action bar ──────────────────────── */}
+        <View style={[styles.topBar, { paddingTop: topPad + 10 }]}>
           <Pressable
             onPress={() => {
               setMenuOpen(true);
@@ -206,11 +206,6 @@ export default function HomeScreen() {
             hitSlop={8}
           >
             <Ionicons name="menu" size={26} color={Colors.textPrimary} />
-          </Pressable>
-
-          {/* Centered logo */}
-          <Pressable onPress={() => setActiveCategory("All")} style={styles.logoBtn}>
-            <Image source={HD_LOGO} style={styles.headerLogo} resizeMode="contain" />
           </Pressable>
 
           <View style={styles.topRight}>
@@ -237,6 +232,15 @@ export default function HomeScreen() {
             </Pressable>
           </View>
         </View>
+
+        {/* ── Brand logo header ───────────────────── */}
+        <Pressable
+          onPress={() => setActiveCategory("All")}
+          style={styles.logoHeader}
+        >
+          <View style={styles.logoGlow} />
+          <Image source={HD_LOGO} style={styles.headerLogo} resizeMode="contain" />
+        </Pressable>
 
         {/* ── Hero banner ─────────────────────────── */}
         <View style={styles.heroBanner}>
@@ -438,18 +442,34 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 16,
+    marginBottom: 4,
   },
-  logoBtn: {
-    flex: 1,
+
+  /* Brand logo header */
+  logoHeader: {
     alignItems: "center",
     justifyContent: "center",
-    marginHorizontal: 4,
+    paddingVertical: 10,
+    marginBottom: 14,
+    position: "relative",
+  },
+  logoGlow: {
+    position: "absolute",
+    width: 220,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: "rgba(228,161,43,0.07)",
+    shadowColor: Colors.goldAccent,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius: 28,
+    elevation: 0,
   },
   headerLogo: {
-    width: 100,
-    height: 52,
+    width: 200,
+    height: 80,
   },
+
   topRight: { flexDirection: "row", alignItems: "center", gap: 4 },
   iconBtn: {
     width: 40,
