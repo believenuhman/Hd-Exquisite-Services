@@ -284,11 +284,16 @@ const styles = StyleSheet.create({
   itemRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(20,20,28,0.78)",
+    backgroundColor: "#13121A",
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(214,162,74,0.25)",
+    borderColor: "rgba(214,162,74,0.22)",
     overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    elevation: 4,
   },
   thumbContainer: {
     width: 80,

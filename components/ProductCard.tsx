@@ -13,8 +13,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { Product } from "@/lib/supabase";
 
-const CARD_WIDTH = 170;
-const CARD_HEIGHT = 230;
+const CARD_WIDTH = 168;
+const CARD_HEIGHT = 244;
+const UD = Platform.OS !== "web";
 
 interface ProductCardProps {
   product: Product;
@@ -25,27 +26,41 @@ interface ProductCardProps {
 
 const FALLBACK_IMAGE = require("@/assets/images/hennessy.png");
 
-export function ProductCard({ product, onPress, onAddToCart, formatPrice }: ProductCardProps) {
+export function ProductCard({
+  product,
+  onPress,
+  onAddToCart,
+  formatPrice,
+}: ProductCardProps) {
   const scale = useRef(new Animated.Value(1)).current;
-  const fullStars = Math.floor(product.rating);
-  const hasHalf = product.rating % 1 >= 0.5;
-  const priceStr = formatPrice ? formatPrice(product.price) : `$${product.price.toFixed(2)}`;
+  const priceStr = formatPrice
+    ? formatPrice(product.price)
+    : `$${product.price.toFixed(2)}`;
 
   return (
-    <Animated.View style={[styles.animWrapper, { transform: [{ scale }] }]}>
+    <Animated.View style={[styles.wrapper, { transform: [{ scale }] }]}>
       <Pressable
         onPress={onPress}
         onPressIn={() =>
-          Animated.spring(scale, { toValue: 0.96, useNativeDriver: Platform.OS !== "web", speed: 20 }).start()
+          Animated.spring(scale, {
+            toValue: 0.95,
+            useNativeDriver: UD,
+            speed: 30,
+          }).start()
         }
         onPressOut={() =>
-          Animated.spring(scale, { toValue: 1, useNativeDriver: Platform.OS !== "web", speed: 20 }).start()
+          Animated.spring(scale, {
+            toValue: 1,
+            useNativeDriver: UD,
+            speed: 20,
+          }).start()
         }
         style={styles.card}
       >
+        {/* Image */}
         <View style={styles.imageArea}>
           <LinearGradient
-            colors={["rgba(214,162,74,0.14)", "rgba(11,11,15,0.6)"]}
+            colors={["rgba(214,162,74,0.14)", "rgba(11,11,15,0.65)"]}
             style={StyleSheet.absoluteFill}
           />
           <View style={styles.glowCircle} />
@@ -54,73 +69,123 @@ export function ProductCard({ product, onPress, onAddToCart, formatPrice }: Prod
             style={styles.bottleImage}
             resizeMode="contain"
           />
+          {product.is_trending && (
+            <View style={styles.hotBadge}>
+              <Text style={styles.hotBadgeText}>HOT</Text>
+            </View>
+          )}
         </View>
 
-        <LinearGradient
-          colors={["rgba(14,12,10,0.85)", "rgba(22,18,12,0.95)"]}
-          style={styles.infoArea}
-        >
-          <Text style={styles.productName} numberOfLines={1}>
+        {/* Info */}
+        <View style={styles.infoArea}>
+          <Text style={styles.catLabel} numberOfLines={1}>
+            {product.category}
+          </Text>
+          <Text style={styles.productName} numberOfLines={2}>
             {product.name}
           </Text>
-          <View style={styles.starsRow}>
-            {[1, 2, 3, 4, 5].map((i) => (
-              <Ionicons
-                key={i}
-                name={i <= fullStars ? "star" : i === fullStars + 1 && hasHalf ? "star-half" : "star-outline"}
-                size={10}
-                color={Colors.goldAccent}
-              />
-            ))}
-            <Text style={styles.ratingNum}>{product.rating}</Text>
-          </View>
           <View style={styles.priceRow}>
             <Text style={styles.priceText}>{priceStr}</Text>
-            <Pressable onPress={(e) => { e.stopPropagation(); onAddToCart?.(); }} hitSlop={8}>
-              <LinearGradient colors={[Colors.goldStart, Colors.goldEnd]} style={styles.addBtn}>
-                <Ionicons name="add" size={14} color="#0B0B0F" />
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                onAddToCart?.();
+              }}
+              hitSlop={10}
+            >
+              <LinearGradient
+                colors={[Colors.goldStart, Colors.goldEnd]}
+                style={styles.addBtn}
+              >
+                <Ionicons name="add" size={16} color="#0B0B0F" />
               </LinearGradient>
             </Pressable>
           </View>
-        </LinearGradient>
+        </View>
       </Pressable>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  animWrapper: { marginRight: 14 },
+  wrapper: { marginRight: 14 },
   card: {
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
-    borderRadius: 22,
+    borderRadius: 20,
     overflow: "hidden",
-    backgroundColor: "rgba(20,20,28,0.78)",
+    backgroundColor: "#13121A",
     borderWidth: 1,
-    borderColor: "rgba(214,162,74,0.25)",
+    borderColor: "rgba(214,162,74,0.22)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
   },
-  imageArea: { flex: 1, alignItems: "center", justifyContent: "center" },
+  imageArea: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
   glowCircle: {
     position: "absolute",
-    width: 100, height: 100, borderRadius: 50,
-    backgroundColor: "rgba(214,162,74,0.15)",
-    top: "50%", left: "50%", marginTop: -50, marginLeft: -50,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "rgba(214,162,74,0.13)",
   },
   bottleImage: { width: CARD_WIDTH - 20, height: 140 },
-  infoArea: { paddingHorizontal: 12, paddingVertical: 10, gap: 4 },
+  hotBadge: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    backgroundColor: Colors.goldAccent,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  hotBadgeText: {
+    fontFamily: "PlayfairDisplay_700Bold",
+    fontSize: 8,
+    color: "#0B0B0F",
+    letterSpacing: 0.8,
+  },
+  infoArea: {
+    padding: 12,
+    backgroundColor: "rgba(11,11,15,0.65)",
+    gap: 3,
+  },
+  catLabel: {
+    fontFamily: "CormorantGaramond_400Regular",
+    fontSize: 10,
+    color: Colors.goldAccent,
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
+  },
   productName: {
-    fontSize: 14, fontFamily: "PlayfairDisplay_700Bold",
-    color: Colors.textPrimary, letterSpacing: 0.3,
+    fontFamily: "PlayfairDisplay_700Bold",
+    fontSize: 13,
+    color: Colors.textPrimary,
+    lineHeight: 17,
   },
-  starsRow: { flexDirection: "row", alignItems: "center", gap: 2 },
-  ratingNum: {
-    fontSize: 10, color: Colors.textSecondary,
-    fontFamily: "CormorantGaramond_400Regular", marginLeft: 4,
+  priceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 5,
   },
-  priceRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 2 },
   priceText: {
-    fontSize: 18, fontFamily: "PlayfairDisplay_700Bold",
-    color: Colors.textGold, letterSpacing: 0.5,
+    fontFamily: "PlayfairDisplay_700Bold",
+    fontSize: 17,
+    color: Colors.textGold,
   },
-  addBtn: { width: 24, height: 24, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  addBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });
