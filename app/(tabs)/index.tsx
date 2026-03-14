@@ -177,7 +177,6 @@ export default function HomeScreen() {
 
   return (
     <ScreenBackground>
-      <DrawerMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
@@ -199,7 +198,7 @@ export default function HomeScreen() {
         <View style={[styles.topBar, { paddingTop: topPad + 10 }]}>
           <Pressable
             onPress={() => {
-              setMenuOpen(true);
+              setMenuOpen((prev) => !prev);
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             }}
             style={styles.iconBtn}
@@ -430,6 +429,9 @@ export default function HomeScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Drawer rendered after ScrollView — Modal floats above everything */}
+      <DrawerMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
     </ScreenBackground>
   );
 }

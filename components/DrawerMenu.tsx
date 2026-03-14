@@ -1,8 +1,9 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
   Image,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -16,7 +17,7 @@ import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors } from "@/constants/colors";
 
-const { width } = Dimensions.get("window");
+const { width, height } = Dimensions.get("window");
 const DRAWER_W = Math.min(width * 0.80, 320);
 const UD = Platform.OS !== "web";
 
@@ -32,32 +33,37 @@ interface MenuItem {
 }
 
 const MENU_ITEMS: MenuItem[] = [
-  { label: "Home", icon: "home-outline", route: "/(tabs)/index" },
-  { label: "Categories", icon: "grid-outline", route: "/(tabs)/search" },
-  { label: "My Cart", icon: "bag-outline", route: "/(tabs)/cart" },
-  { label: "Orders", icon: "receipt-outline", route: "/(tabs)/orders" },
-  { label: "Profile", icon: "person-outline", route: "/(tabs)/profile" },
-  { label: "Contact Support", icon: "chatbubble-ellipses-outline", route: "/(tabs)/profile" },
-  { label: "Settings", icon: "settings-outline", route: "/(tabs)/profile" },
+  { label: "Home",            icon: "home-outline",                  route: "/(tabs)/index"   },
+  { label: "Categories",      icon: "grid-outline",                  route: "/(tabs)/search"  },
+  { label: "My Cart",         icon: "bag-outline",                   route: "/(tabs)/cart"    },
+  { label: "Orders",          icon: "receipt-outline",               route: "/(tabs)/orders"  },
+  { label: "Profile",         icon: "person-outline",                route: "/(tabs)/profile" },
+  { label: "Contact Support", icon: "chatbubble-ellipses-outline",   route: "/(tabs)/profile" },
+  { label: "Settings",        icon: "settings-outline",              route: "/(tabs)/profile" },
 ];
 
 export function DrawerMenu({ open, onClose }: DrawerMenuProps) {
-  const slideX = useRef(new Animated.Value(-DRAWER_W)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const slideX        = useRef(new Animated.Value(-DRAWER_W)).current;
+  const bgOpacity     = useRef(new Animated.Value(0)).current;
+  const [visible, setVisible] = useState(false);
   const insets = useSafeAreaInsets();
+  const topPad   = Platform.OS === "web" ? 67  : insets.top;
+  const botPad   = Platform.OS === "web" ? 34  : insets.bottom;
 
+  /* ── open / close animations ── */
   useEffect(() => {
     if (open) {
+      setVisible(true);                     // mount before animating in
       Animated.parallel([
         Animated.spring(slideX, {
           toValue: 0,
           useNativeDriver: UD,
-          tension: 65,
-          friction: 11,
+          tension: 70,
+          friction: 12,
         }),
-        Animated.timing(backdropOpacity, {
+        Animated.timing(bgOpacity, {
           toValue: 1,
-          duration: 280,
+          duration: 250,
           useNativeDriver: UD,
         }),
       ]).start();
@@ -65,66 +71,75 @@ export function DrawerMenu({ open, onClose }: DrawerMenuProps) {
       Animated.parallel([
         Animated.timing(slideX, {
           toValue: -DRAWER_W,
-          duration: 260,
+          duration: 240,
           useNativeDriver: UD,
         }),
-        Animated.timing(backdropOpacity, {
+        Animated.timing(bgOpacity, {
           toValue: 0,
-          duration: 220,
+          duration: 200,
           useNativeDriver: UD,
         }),
-      ]).start();
+      ]).start(({ finished }) => {
+        if (finished) setVisible(false);    // unmount after sliding out
+      });
     }
   }, [open]);
 
+  /* ── navigate & close ── */
   const handleNav = (route: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onClose();
-    setTimeout(() => router.push(route as any), 180);
+    // wait for close animation before pushing to avoid visual jank
+    setTimeout(() => router.push(route as any), 260);
   };
 
-  if (!open && (slideX as any)._value === -DRAWER_W) return null;
-
   return (
-    <View style={StyleSheet.absoluteFillObject} pointerEvents={open ? "auto" : "none"}>
-      {/* Backdrop */}
-      <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      {/* ── dim backdrop — tap to close ── */}
+      <Animated.View
+        style={[styles.backdrop, { opacity: bgOpacity }]}
+        pointerEvents={open ? "auto" : "none"}
+      >
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       </Animated.View>
 
-      {/* Drawer panel */}
+      {/* ── slide-in drawer panel ── */}
       <Animated.View
-        style={[
-          styles.drawer,
-          { transform: [{ translateX: slideX }] },
-        ]}
+        style={[styles.drawer, { transform: [{ translateX: slideX }] }]}
+        pointerEvents={open ? "auto" : "none"}
       >
+        {/* Dark gradient fill */}
         <LinearGradient
-          colors={["#13111A", "#09090C"]}
+          colors={["#17141F", "#09090C"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFill}
         />
-        {/* Gold border right edge */}
+
+        {/* Gold right-edge border */}
         <View style={styles.borderRight} />
 
+        {/* Content */}
         <View
           style={[
-            styles.drawerContent,
-            {
-              paddingTop: (Platform.OS === "web" ? 67 : insets.top) + 16,
-              paddingBottom: (Platform.OS === "web" ? 34 : insets.bottom) + 24,
-            },
+            styles.content,
+            { paddingTop: topPad + 20, paddingBottom: botPad + 24 },
           ]}
         >
-          {/* Logo + brand */}
+          {/* ── Brand header ── */}
           <View style={styles.brandRow}>
             <Image
               source={require("@/assets/logo/hd-xquisite-logo-dark.png")}
               style={styles.drawerLogo}
               resizeMode="contain"
             />
-            <View style={styles.brandText}>
+            <View>
               <Text style={styles.brandName}>HD XQUISITE</Text>
               <Text style={styles.brandSub}>LIQUORS</Text>
             </View>
@@ -132,7 +147,7 @@ export function DrawerMenu({ open, onClose }: DrawerMenuProps) {
 
           <View style={styles.divider} />
 
-          {/* Menu items */}
+          {/* ── Menu items ── */}
           <View style={styles.menuList}>
             {MENU_ITEMS.map((item, idx) => (
               <Pressable
@@ -140,17 +155,17 @@ export function DrawerMenu({ open, onClose }: DrawerMenuProps) {
                 onPress={() => handleNav(item.route)}
                 style={({ pressed }) => [
                   styles.menuItem,
-                  pressed && styles.menuItemPressed,
+                  pressed && styles.menuItemActive,
                 ]}
               >
-                <View style={styles.menuIconWrap}>
+                <View style={styles.iconWrap}>
                   <Ionicons name={item.icon} size={20} color={Colors.goldAccent} />
                 </View>
                 <Text style={styles.menuLabel}>{item.label}</Text>
                 <Ionicons
                   name="chevron-forward"
-                  size={16}
-                  color="rgba(228,161,43,0.35)"
+                  size={15}
+                  color="rgba(228,161,43,0.3)"
                 />
               </Pressable>
             ))}
@@ -158,81 +173,92 @@ export function DrawerMenu({ open, onClose }: DrawerMenuProps) {
 
           <View style={styles.divider} />
 
-          {/* Footer tagline */}
-          <Text style={styles.footerText}>Premium Spirits. Delivered.</Text>
+          <Text style={styles.tagline}>Premium Spirits. Delivered.</Text>
         </View>
       </Animated.View>
-    </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  /* Full-screen dim layer */
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.62)",
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width,
+    height,
+    backgroundColor: "rgba(0,0,0,0.65)",
   },
+
+  /* Sliding drawer panel */
   drawer: {
     position: "absolute",
-    left: 0,
     top: 0,
+    left: 0,
     bottom: 0,
     width: DRAWER_W,
     overflow: "hidden",
   },
+
   borderRight: {
     position: "absolute",
     right: 0,
     top: 0,
     bottom: 0,
     width: 1,
-    backgroundColor: "rgba(228,161,43,0.22)",
-    zIndex: 10,
+    backgroundColor: "rgba(228,161,43,0.25)",
+    zIndex: 1,
   },
-  drawerContent: {
+
+  content: {
     flex: 1,
-    paddingHorizontal: 24,
+    paddingHorizontal: 22,
   },
 
   /* Brand */
   brandRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
-    marginBottom: 20,
+    gap: 12,
+    marginBottom: 18,
   },
-  drawerLogo: { width: 52, height: 52 },
-  brandText: { gap: 1 },
+  drawerLogo: { width: 50, height: 50 },
   brandName: {
     fontFamily: "PlayfairDisplay_900Black",
-    fontSize: 16,
+    fontSize: 15,
     color: Colors.goldAccent,
     letterSpacing: 2,
   },
   brandSub: {
     fontFamily: "CormorantGaramond_600SemiBold",
-    fontSize: 13,
-    color: "rgba(228,161,43,0.6)",
-    letterSpacing: 3,
+    fontSize: 12,
+    color: "rgba(228,161,43,0.55)",
+    letterSpacing: 3.5,
+    marginTop: 1,
   },
 
+  /* Divider */
   divider: {
     height: 1,
-    backgroundColor: "rgba(228,161,43,0.14)",
-    marginVertical: 18,
+    backgroundColor: "rgba(228,161,43,0.12)",
+    marginVertical: 16,
   },
 
-  /* Menu items */
-  menuList: { gap: 4 },
+  /* Menu list */
+  menuList: { gap: 2 },
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
     borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 13,
   },
-  menuItemPressed: { backgroundColor: "rgba(228,161,43,0.08)" },
-  menuIconWrap: {
+  menuItemActive: {
+    backgroundColor: "rgba(228,161,43,0.09)",
+  },
+  iconWrap: {
     width: 38,
     height: 38,
     borderRadius: 12,
@@ -249,11 +275,11 @@ const styles = StyleSheet.create({
   },
 
   /* Footer */
-  footerText: {
+  tagline: {
     fontFamily: "CormorantGaramond_400Regular",
     fontSize: 13,
-    color: "rgba(255,255,255,0.3)",
+    color: "rgba(255,255,255,0.28)",
     textAlign: "center",
-    letterSpacing: 1.5,
+    letterSpacing: 1.6,
   },
 });
