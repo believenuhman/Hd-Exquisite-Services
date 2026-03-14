@@ -40,7 +40,7 @@ function SearchResultCard({
   const fullStars = Math.floor(item.rating);
 
   return (
-    <Animated.View style={[styles.cardWrap, { transform: [{ scale }] }]}>
+    <Animated.View style={{ transform: [{ scale }] }}>
       <Pressable
         onPress={() => router.push(`/product/${item.id}`)}
         onPressIn={() =>
@@ -51,18 +51,18 @@ function SearchResultCard({
         }
         style={styles.card}
       >
-        {/* Thumbnail */}
+        {/* Image */}
         <View style={styles.thumb}>
-          <LinearGradient
-            colors={["rgba(214,162,74,0.12)", "rgba(11,11,15,0.65)"]}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={styles.thumbGlow} />
           <Image
             source={item.image_url ? { uri: item.image_url } : FALLBACK_IMG}
             style={styles.thumbImg}
             resizeMode="contain"
           />
+          {item.is_trending && (
+            <View style={styles.bestsellerBadge}>
+              <Text style={styles.bestsellerText}>Bestseller</Text>
+            </View>
+          )}
         </View>
 
         {/* Info */}
@@ -87,7 +87,7 @@ function SearchResultCard({
           <Text style={styles.priceText}>{formatPrice(item.price)}</Text>
         </View>
 
-        {/* Add btn */}
+        {/* Add */}
         <Pressable
           onPress={(e) => {
             e.stopPropagation();
@@ -97,12 +97,9 @@ function SearchResultCard({
           style={styles.addWrap}
           hitSlop={8}
         >
-          <LinearGradient
-            colors={[Colors.goldStart, Colors.goldEnd]}
-            style={styles.addGrad}
-          >
-            <Ionicons name="add" size={20} color="#0B0B0F" />
-          </LinearGradient>
+          <View style={styles.addBtn}>
+            <Ionicons name="add" size={20} color="#000" />
+          </View>
         </Pressable>
       </Pressable>
     </Animated.View>
@@ -153,17 +150,16 @@ export default function SearchScreen() {
   else if (activeSort === "Rating") results = [...results].sort((a, b) => b.rating - a.rating);
 
   const ListHeader = (
-    <View style={[styles.stickyHeader, { paddingTop: topPad + 16 }]}>
-      {/* Title */}
-      <Text style={styles.pageTitle}>Explore</Text>
+    <View style={[styles.headerArea, { paddingTop: topPad + 16 }]}>
+      <Text style={styles.pageTitle}>Search</Text>
 
-      {/* Search bar */}
-      <View style={styles.searchBar}>
-        <Ionicons name="search" size={17} color="rgba(185,185,195,0.45)" />
+      {/* Search input */}
+      <View style={styles.searchBox}>
+        <Ionicons name="search" size={18} color="rgba(80,80,90,0.55)" />
         <TextInput
           style={styles.searchInput}
           placeholder="Search spirits, wines, cocktails…"
-          placeholderTextColor="rgba(185,185,195,0.38)"
+          placeholderTextColor="rgba(80,80,90,0.5)"
           value={query}
           onChangeText={setQuery}
           autoCapitalize="none"
@@ -171,11 +167,7 @@ export default function SearchScreen() {
         />
         {query.length > 0 && (
           <Pressable onPress={() => setQuery("")} hitSlop={10}>
-            <Ionicons
-              name="close-circle"
-              size={18}
-              color="rgba(185,185,195,0.45)"
-            />
+            <Ionicons name="close-circle" size={18} color="rgba(80,80,90,0.5)" />
           </Pressable>
         )}
       </View>
@@ -193,22 +185,16 @@ export default function SearchScreen() {
               setActiveCategory(c);
               Haptics.selectionAsync();
             }}
-            style={styles.chip}
+            style={[styles.chip, activeCategory === c && styles.chipActive]}
           >
-            {activeCategory === c ? (
-              <LinearGradient
-                colors={[Colors.goldStart, Colors.goldEnd]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.chipActive}
-              >
-                <Text style={styles.chipActiveText}>{c}</Text>
-              </LinearGradient>
-            ) : (
-              <View style={styles.chipInactive}>
-                <Text style={styles.chipInactiveText}>{c}</Text>
-              </View>
-            )}
+            <Text
+              style={[
+                styles.chipText,
+                activeCategory === c && styles.chipTextActive,
+              ]}
+            >
+              {c}
+            </Text>
           </Pressable>
         )}
       />
@@ -233,14 +219,14 @@ export default function SearchScreen() {
         ))}
       </View>
 
-      {/* Count indicator */}
+      {/* Count row */}
       {!loading && (
         <View style={styles.countRow}>
-          <View style={styles.countDivider} />
+          <View style={styles.countLine} />
           <Text style={styles.countText}>
             {results.length} {results.length === 1 ? "product" : "products"}
           </Text>
-          <View style={styles.countDivider} />
+          <View style={styles.countLine} />
         </View>
       )}
     </View>
@@ -250,8 +236,8 @@ export default function SearchScreen() {
     <ScreenBackground>
       {loading ? (
         <>
-          <View style={[styles.stickyHeader, { paddingTop: topPad + 16 }]}>
-            <Text style={styles.pageTitle}>Explore</Text>
+          <View style={[styles.headerArea, { paddingTop: topPad + 16 }]}>
+            <Text style={styles.pageTitle}>Search</Text>
           </View>
           <View style={styles.loaderWrap}>
             <ActivityIndicator color={Colors.goldAccent} size="large" />
@@ -261,10 +247,7 @@ export default function SearchScreen() {
         <FlatList
           data={results}
           keyExtractor={(p) => p.id}
-          contentContainerStyle={[
-            styles.list,
-            { paddingBottom: botPad + 90 },
-          ]}
+          contentContainerStyle={[styles.list, { paddingBottom: botPad + 90 }]}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={() => ListHeader}
           ListEmptyComponent={
@@ -272,7 +255,7 @@ export default function SearchScreen() {
               <Ionicons
                 name="search-outline"
                 size={48}
-                color="rgba(214,162,74,0.25)"
+                color="rgba(228,161,43,0.25)"
               />
               <Text style={styles.emptyTitle}>No results found</Text>
               <Text style={styles.emptySub}>
@@ -290,72 +273,64 @@ export default function SearchScreen() {
 }
 
 const styles = StyleSheet.create({
-  stickyHeader: {
-    paddingHorizontal: 20,
-    paddingBottom: 8,
-  },
+  headerArea: { paddingHorizontal: 18, paddingBottom: 8 },
   pageTitle: {
     fontFamily: "PlayfairDisplay_900Black",
-    fontSize: 30,
+    fontSize: 28,
     color: Colors.textPrimary,
     marginBottom: 16,
     letterSpacing: 0.3,
   },
 
-  /* Search bar */
-  searchBar: {
+  /* Search box */
+  searchBox: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(214,162,74,0.18)",
-    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
     paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 16,
+    paddingVertical: 13,
+    marginBottom: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
   },
   searchInput: {
     flex: 1,
-    fontFamily: "CormorantGaramond_400Regular",
-    fontSize: 16,
-    color: Colors.textPrimary,
+    fontFamily: "Inter_400Regular",
+    fontSize: 15,
+    color: Colors.textDark,
   },
 
-  /* Category chips */
+  /* Chips */
   chipsRow: { gap: 8, paddingRight: 4, marginBottom: 14 },
-  chip: { borderRadius: 50, overflow: "hidden" },
-  chipActive: {
-    paddingHorizontal: 18,
+  chip: {
+    paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 50,
-  },
-  chipActiveText: {
-    fontFamily: "PlayfairDisplay_700Bold",
-    fontSize: 13,
-    color: "#0B0B0F",
-  },
-  chipInactive: {
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    borderRadius: 50,
+    borderRadius: 24,
     backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
   },
-  chipInactiveText: {
-    fontFamily: "CormorantGaramond_400Regular",
+  chipActive: {
+    backgroundColor: Colors.goldAccent,
+    borderColor: Colors.goldAccent,
+  },
+  chipText: {
+    fontFamily: "Inter_500Medium",
     fontSize: 13,
-    color: "rgba(185,185,195,0.65)",
+    color: "rgba(200,200,210,0.75)",
+  },
+  chipTextActive: {
+    color: "#000",
+    fontFamily: "Inter_600SemiBold",
   },
 
   /* Sort */
-  sortRow: {
-    flexDirection: "row",
-    gap: 8,
-    flexWrap: "wrap",
-    marginBottom: 14,
-  },
+  sortRow: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginBottom: 14 },
   sortBtn: {
     paddingHorizontal: 14,
     paddingVertical: 7,
@@ -365,109 +340,113 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.08)",
   },
   sortBtnActive: {
-    backgroundColor: "rgba(214,162,74,0.12)",
-    borderColor: "rgba(214,162,74,0.4)",
+    backgroundColor: "rgba(228,161,43,0.12)",
+    borderColor: "rgba(228,161,43,0.4)",
   },
   sortText: {
-    fontFamily: "CormorantGaramond_400Regular",
+    fontFamily: "Inter_400Regular",
     fontSize: 13,
     color: "rgba(185,185,195,0.55)",
   },
   sortTextActive: {
     color: Colors.goldAccent,
-    fontFamily: "CormorantGaramond_600SemiBold",
+    fontFamily: "Inter_600SemiBold",
   },
 
-  /* Count row */
+  /* Count */
   countRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     marginBottom: 4,
   },
-  countDivider: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.07)",
-  },
+  countLine: { flex: 1, height: 1, backgroundColor: "rgba(255,255,255,0.07)" },
   countText: {
-    fontFamily: "CormorantGaramond_400Regular",
+    fontFamily: "Inter_400Regular",
     fontSize: 12,
     color: Colors.textSecondary,
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
   },
 
   /* List */
-  list: { paddingHorizontal: 20, paddingTop: 4, gap: 10 },
+  list: { paddingHorizontal: 18, paddingTop: 4, gap: 10 },
 
   /* Card */
-  cardWrap: {},
   card: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#13121A",
+    backgroundColor: Colors.cardLight,
     borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "rgba(214,162,74,0.18)",
     overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.28,
+    shadowOpacity: 0.14,
     shadowRadius: 8,
     elevation: 4,
   },
   thumb: {
-    width: 90,
+    width: 96,
     height: 100,
+    backgroundColor: "#F4EFE6",
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
+    position: "relative",
   },
-  thumbGlow: {
+  thumbImg: { width: 78, height: 84 },
+  bestsellerBadge: {
     position: "absolute",
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: "rgba(214,162,74,0.12)",
+    top: 8,
+    left: 0,
+    backgroundColor: Colors.goldAccent,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderTopRightRadius: 6,
+    borderBottomRightRadius: 6,
   },
-  thumbImg: { width: 72, height: 84 },
+  bestsellerText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 8,
+    color: "#000",
+    letterSpacing: 0.3,
+  },
   info: {
     flex: 1,
-    paddingVertical: 14,
-    paddingLeft: 6,
+    paddingVertical: 12,
+    paddingLeft: 12,
     paddingRight: 4,
-    gap: 4,
+    gap: 3,
   },
   catLabel: {
-    fontFamily: "CormorantGaramond_400Regular",
+    fontFamily: "Inter_500Medium",
     fontSize: 10,
     color: Colors.goldAccent,
-    letterSpacing: 1.8,
+    letterSpacing: 1.4,
     textTransform: "uppercase",
   },
   itemName: {
-    fontFamily: "PlayfairDisplay_700Bold",
-    fontSize: 14,
-    color: Colors.textPrimary,
-    lineHeight: 18,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: Colors.textDark,
+    lineHeight: 17,
   },
   starsRow: { flexDirection: "row", alignItems: "center", gap: 2 },
   ratingNum: {
-    fontFamily: "CormorantGaramond_400Regular",
+    fontFamily: "Inter_400Regular",
     fontSize: 11,
-    color: Colors.textSecondary,
+    color: "#888",
     marginLeft: 4,
   },
   priceText: {
-    fontFamily: "PlayfairDisplay_700Bold",
-    fontSize: 17,
-    color: Colors.textGold,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 16,
+    color: Colors.textDark,
   },
-  addWrap: { paddingHorizontal: 16 },
-  addGrad: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
+  addWrap: { paddingHorizontal: 14 },
+  addBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: Colors.goldAccent,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -488,8 +467,8 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   emptySub: {
-    fontFamily: "CormorantGaramond_400Regular",
-    fontSize: 15,
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
     color: Colors.textSecondary,
     textAlign: "center",
   },

@@ -6,7 +6,7 @@ import React from "react";
 import { Colors } from "@/constants/colors";
 import { useCart } from "@/context/CartContext";
 
-function TabBarIcon({
+function TabIcon({
   name,
   color,
 }: {
@@ -29,12 +29,12 @@ export default function TabLayout() {
         tabBarInactiveTintColor: "rgba(255,255,255,0.3)",
         tabBarLabelStyle: {
           fontSize: 10,
-          letterSpacing: 0.5,
-          fontFamily: "CormorantGaramond_400Regular",
+          letterSpacing: 0.4,
+          fontFamily: "Inter_500Medium",
         },
         tabBarStyle: {
           position: "absolute",
-          backgroundColor: isIOS ? "transparent" : isWeb ? Colors.tabBarBg : Colors.tabBarBg,
+          backgroundColor: isIOS ? "transparent" : Colors.tabBarBg,
           borderTopWidth: 1,
           borderTopColor: Colors.tabBarBorder,
           elevation: 0,
@@ -43,16 +43,13 @@ export default function TabLayout() {
         tabBarBackground: () =>
           isIOS ? (
             <BlurView
-              intensity={80}
+              intensity={90}
               tint="dark"
               style={StyleSheet.absoluteFill}
             />
           ) : (
             <View
-              style={[
-                StyleSheet.absoluteFill,
-                { backgroundColor: Colors.tabBarBg },
-              ]}
+              style={[StyleSheet.absoluteFill, { backgroundColor: Colors.tabBarBg }]}
             />
           ),
       }}
@@ -61,18 +58,14 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Home",
-          tabBarIcon: ({ color }) => (
-            <TabBarIcon name="home" color={color} />
-          ),
+          tabBarIcon: ({ color }) => <TabIcon name="home" color={color} />,
         }}
       />
       <Tabs.Screen
         name="search"
         options={{
           title: "Search",
-          tabBarIcon: ({ color }) => (
-            <TabBarIcon name="search" color={color} />
-          ),
+          tabBarIcon: ({ color }) => <TabIcon name="search" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -81,13 +74,20 @@ export default function TabLayout() {
           title: "Cart",
           tabBarBadge: totalItems > 0 ? totalItems : undefined,
           tabBarBadgeStyle: {
-            backgroundColor: Colors.goldAccent,
-            color: "#0B0B0F",
+            backgroundColor: Colors.magenta,
+            color: "#fff",
             fontSize: 10,
             fontWeight: "700",
           },
+          tabBarIcon: ({ color }) => <TabIcon name="bag-outline" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="orders"
+        options={{
+          title: "Orders",
           tabBarIcon: ({ color }) => (
-            <TabBarIcon name="bag" color={color} />
+            <TabIcon name="receipt-outline" color={color} />
           ),
         }}
       />
@@ -95,9 +95,7 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ color }) => (
-            <TabBarIcon name="person" color={color} />
-          ),
+          tabBarIcon: ({ color }) => <TabIcon name="person-outline" color={color} />,
         }}
       />
     </Tabs>

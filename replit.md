@@ -1,31 +1,36 @@
 # HD Xquisite Liquors
 
-A luxury premium liquor delivery mobile app built with Expo React Native, styled to match a high-end cinematic aesthetic.
+A premium liquor delivery mobile app built with Expo React Native, inspired by Drizly/Uber Eats UX with HD XQUISITE brand identity.
 
 ## Architecture
 
 - **Frontend**: Expo Router (file-based routing), React Native
 - **Backend**: Express.js on port 5000
 - **State**: React Context (CartContext) for cart management
-- **Fonts**: Playfair Display (titles/headings) + Cormorant Garamond (body/secondary)
+- **Fonts**: Playfair Display (headings) + Cormorant Garamond (body) + Inter (UI/product cards)
 
 ## Design System
 
-- Background: `#0B0B0F` (deep black)
-- Cards: `rgba(20,20,28,0.78)` (dark glassmorphism)
-- Gold Gradient: `#D6A24A → #F6D27A`
-- Gold Accent: `#E8B86D`
-- Muted Text: `rgba(185,185,195,0.8)` (`#B9B9C3`)
-- Card Border: `rgba(214,162,74,0.25)`
-- All colors defined in `constants/colors.ts`
+- Background: `#09090C` (deep black)
+- Product Cards: `#FFFFFF` (white, clean ecommerce style)
+- Card Image Area: `#F4EFE6` (warm cream)
+- Dark Cards: `#13121A` (banners, order cards)
+- Gold Gradient: `#D4901A → #F5C842`
+- Gold Accent: `#E4A12B` (category pills, badges, add buttons)
+- Magenta Accent: `#C91E8C` (cart badge, brand accent)
+- Tab Bar: `#0C0B10`
+- All colors: `constants/colors.ts`
+
+## Brand Assets
+
+- `assets/images/hd-logo.png` — HD XQUISITE globe logo (magenta + gold)
+- `assets/images/hennessy.png`, `vodka.png`, `rum.png`, `wine.png` — local fallback bottle images
 
 ## Reusable Components
 
-- `components/ScreenBackground.tsx` — particle-bg.png + gradient overlay on every screen
-- `components/GoldButton.tsx` — `filled` (gold gradient) or `outline` (gold border) variants
-- `components/GlassCard.tsx` — dark glass card with gold border
-- `components/ProductCard.tsx` — 170×230 luxury product card with bottle glow
-- `components/SplashOverlay.tsx` — animated sphere splash with floating particles
+- `components/ScreenBackground.tsx` — dark gradient + particle background
+- `components/ProductCard.tsx` — 162px white portrait card with bestseller badge + rating pill
+- `components/SplashOverlay.tsx` — animated splash screen
 
 ## Screens
 

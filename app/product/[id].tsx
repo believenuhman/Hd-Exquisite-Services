@@ -35,6 +35,7 @@ export default function ProductDetailScreen() {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [added, setAdded] = useState(false);
+  const [quantity, setQuantity] = useState(1);
 
   const bottleScale = useRef(new Animated.Value(0.7)).current;
   const bottleOpacity = useRef(new Animated.Value(0)).current;
@@ -83,14 +84,14 @@ export default function ProductDetailScreen() {
   const hasHalf = product.rating % 1 >= 0.5;
 
   const handleAddToCart = () => {
-    addToCart(product);
+    for (let i = 0; i < quantity; i++) addToCart(product);
     setAdded(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setTimeout(() => setAdded(false), 2000);
   };
 
   const handleBuyNow = () => {
-    addToCart(product);
+    for (let i = 0; i < quantity; i++) addToCart(product);
     router.push("/checkout");
   };
 
@@ -144,8 +145,32 @@ export default function ProductDetailScreen() {
             <Text style={styles.description}>{product.description}</Text>
           </ScrollView>
 
+          {/* Quantity selector */}
+          <View style={styles.qtySection}>
+            <Text style={styles.qtyLabel}>Quantity</Text>
+            <View style={styles.qtyControls}>
+              <Pressable
+                onPress={() => setQuantity(Math.max(1, quantity - 1))}
+                style={styles.qtyBtn}
+                hitSlop={8}
+              >
+                <Ionicons name="remove" size={18} color={Colors.textPrimary} />
+              </Pressable>
+              <Text style={styles.qtyNum}>{quantity}</Text>
+              <Pressable
+                onPress={() => setQuantity(Math.min(product.stock_qty, quantity + 1))}
+                style={styles.qtyBtnAdd}
+                hitSlop={8}
+              >
+                <LinearGradient colors={[Colors.goldStart, Colors.goldEnd]} style={styles.qtyBtnGrad}>
+                  <Ionicons name="add" size={18} color="#000" />
+                </LinearGradient>
+              </Pressable>
+            </View>
+          </View>
+
           <View style={styles.priceRow}>
-            <Text style={styles.price}>{formatPrice(product.price)}</Text>
+            <Text style={styles.price}>{formatPrice(product.price * quantity)}</Text>
             <Text style={styles.stockLabel}>
               {product.stock_qty > 0 ? `${product.stock_qty} in stock` : "Out of stock"}
             </Text>
@@ -157,6 +182,7 @@ export default function ProductDetailScreen() {
             </Pressable>
             <Pressable onPress={handleBuyNow} disabled={product.stock_qty === 0} style={[styles.goldBtn, { flex: 1 }]}>
               <LinearGradient colors={[Colors.goldStart, Colors.goldEnd]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.goldGrad}>
+                <Ionicons name="bag-add-outline" size={16} color="#000" />
                 <Text style={styles.goldBtnText}>Buy Now</Text>
               </LinearGradient>
             </Pressable>
@@ -227,9 +253,16 @@ const styles = StyleSheet.create({
   },
   outlineBtnText: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 14, color: Colors.goldAccent },
   goldBtn: { height: 52, borderRadius: 14, overflow: "hidden" },
-  goldGrad: { flex: 1, alignItems: "center", justifyContent: "center" },
   goldBtnText: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 14, color: "#000", letterSpacing: 0.5 },
   notFound: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 22, color: Colors.textPrimary, marginBottom: 16 },
   backPressable: { borderWidth: 1, borderColor: Colors.goldAccent, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 10 },
   backLink: { color: Colors.goldAccent, fontFamily: "CormorantGaramond_600SemiBold", fontSize: 15 },
+  qtySection: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
+  qtyLabel: { fontFamily: "CormorantGaramond_600SemiBold", fontSize: 15, color: Colors.textSecondary, letterSpacing: 0.5 },
+  qtyControls: { flexDirection: "row", alignItems: "center", gap: 0, borderRadius: 14, borderWidth: 1, borderColor: "rgba(255,255,255,0.12)", overflow: "hidden", backgroundColor: "rgba(255,255,255,0.04)" },
+  qtyBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  qtyNum: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 18, color: Colors.textPrimary, minWidth: 36, textAlign: "center" },
+  qtyBtnAdd: { width: 44, height: 44, overflow: "hidden" },
+  qtyBtnGrad: { flex: 1, alignItems: "center", justifyContent: "center" },
+  goldGrad: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
 });

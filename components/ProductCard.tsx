@@ -8,14 +8,13 @@ import {
   Platform,
   Image,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { Product } from "@/lib/supabase";
 
-const CARD_WIDTH = 168;
-const CARD_HEIGHT = 244;
+const CARD_WIDTH = 162;
 const UD = Platform.OS !== "web";
+const FALLBACK_IMAGE = require("@/assets/images/hennessy.png");
 
 interface ProductCardProps {
   product: Product;
@@ -23,8 +22,6 @@ interface ProductCardProps {
   onAddToCart?: () => void;
   formatPrice?: (amount: number) => string;
 }
-
-const FALLBACK_IMAGE = require("@/assets/images/hennessy.png");
 
 export function ProductCard({
   product,
@@ -57,30 +54,28 @@ export function ProductCard({
         }
         style={styles.card}
       >
-        {/* Image */}
+        {/* Image area */}
         <View style={styles.imageArea}>
-          <LinearGradient
-            colors={["rgba(214,162,74,0.14)", "rgba(11,11,15,0.65)"]}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={styles.glowCircle} />
           <Image
-            source={product.image_url ? { uri: product.image_url } : FALLBACK_IMAGE}
+            source={
+              product.image_url ? { uri: product.image_url } : FALLBACK_IMAGE
+            }
             style={styles.bottleImage}
             resizeMode="contain"
           />
           {product.is_trending && (
-            <View style={styles.hotBadge}>
-              <Text style={styles.hotBadgeText}>HOT</Text>
+            <View style={styles.bestsellerBadge}>
+              <Text style={styles.bestsellerText}>Bestseller</Text>
             </View>
           )}
+          <View style={styles.ratingPill}>
+            <Ionicons name="star" size={10} color="#fff" />
+            <Text style={styles.ratingPillText}>{product.rating}</Text>
+          </View>
         </View>
 
         {/* Info */}
         <View style={styles.infoArea}>
-          <Text style={styles.catLabel} numberOfLines={1}>
-            {product.category}
-          </Text>
           <Text style={styles.productName} numberOfLines={2}>
             {product.name}
           </Text>
@@ -92,13 +87,9 @@ export function ProductCard({
                 onAddToCart?.();
               }}
               hitSlop={10}
+              style={styles.addBtn}
             >
-              <LinearGradient
-                colors={[Colors.goldStart, Colors.goldEnd]}
-                style={styles.addBtn}
-              >
-                <Ionicons name="add" size={16} color="#0B0B0F" />
-              </LinearGradient>
+              <Ionicons name="add" size={18} color="#000" />
             </Pressable>
           </View>
         </View>
@@ -111,80 +102,85 @@ const styles = StyleSheet.create({
   wrapper: { marginRight: 14 },
   card: {
     width: CARD_WIDTH,
-    height: CARD_HEIGHT,
-    borderRadius: 20,
+    borderRadius: 18,
     overflow: "hidden",
-    backgroundColor: "#13121A",
-    borderWidth: 1,
-    borderColor: "rgba(214,162,74,0.22)",
+    backgroundColor: Colors.cardLight,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 6,
   },
   imageArea: {
-    flex: 1,
+    height: 158,
+    backgroundColor: "#F4EFE6",
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
+    position: "relative",
   },
-  glowCircle: {
-    position: "absolute",
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: "rgba(214,162,74,0.13)",
+  bottleImage: {
+    width: CARD_WIDTH - 20,
+    height: 138,
   },
-  bottleImage: { width: CARD_WIDTH - 20, height: 140 },
-  hotBadge: {
+  bestsellerBadge: {
     position: "absolute",
     top: 10,
-    right: 10,
+    left: 0,
     backgroundColor: Colors.goldAccent,
-    borderRadius: 6,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderTopRightRadius: 8,
+    borderBottomRightRadius: 8,
+  },
+  bestsellerText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 9,
+    color: "#000",
+    letterSpacing: 0.3,
+  },
+  ratingPill: {
+    position: "absolute",
+    bottom: 8,
+    right: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: Colors.goldAccent,
+    borderRadius: 20,
+    paddingHorizontal: 7,
     paddingVertical: 3,
   },
-  hotBadgeText: {
-    fontFamily: "PlayfairDisplay_700Bold",
-    fontSize: 8,
-    color: "#0B0B0F",
-    letterSpacing: 0.8,
+  ratingPillText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    color: "#fff",
   },
   infoArea: {
-    padding: 12,
-    backgroundColor: "rgba(11,11,15,0.65)",
-    gap: 3,
-  },
-  catLabel: {
-    fontFamily: "CormorantGaramond_400Regular",
-    fontSize: 10,
-    color: Colors.goldAccent,
-    letterSpacing: 1.8,
-    textTransform: "uppercase",
+    padding: 10,
+    backgroundColor: Colors.cardLight,
+    gap: 6,
   },
   productName: {
-    fontFamily: "PlayfairDisplay_700Bold",
-    fontSize: 13,
-    color: Colors.textPrimary,
-    lineHeight: 17,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    color: Colors.textDark,
+    lineHeight: 16,
   },
   priceRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 5,
   },
   priceText: {
-    fontFamily: "PlayfairDisplay_700Bold",
-    fontSize: 17,
-    color: Colors.textGold,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 15,
+    color: Colors.textDark,
   },
   addBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: Colors.goldAccent,
     alignItems: "center",
     justifyContent: "center",
   },
