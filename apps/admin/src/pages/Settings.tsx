@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { supabase, AppSettings } from "../lib/supabase";
 
-const S: Record<string, React.CSSProperties> = {
+const S = {
   title: { fontFamily: "'Playfair Display',serif", fontSize: 28, fontWeight: 700, color: "#fff", marginBottom: 8 },
   sub: { color: "rgba(185,185,195,0.7)", fontFamily: "Inter,sans-serif", fontSize: 14, marginBottom: 32 },
   card: { background: "rgba(20,20,28,0.78)", border: "1px solid rgba(214,162,74,0.15)", borderRadius: 16, padding: 28, maxWidth: 560 },

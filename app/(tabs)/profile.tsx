@@ -131,11 +131,7 @@ export default function ProfileScreen() {
           </View>
           <Text style={styles.heroName}>{name || "Guest Member"}</Text>
           <View style={styles.memberBadge}>
-            <Ionicons
-              name="diamond-outline"
-              size={12}
-              color={Colors.goldAccent}
-            />
+            <Ionicons name="diamond-outline" size={12} color={Colors.goldAccent} />
             <Text style={styles.memberBadgeText}>Premium Member</Text>
           </View>
           <Text style={styles.ordersCount}>{orders.length} Orders Placed</Text>
@@ -154,19 +150,13 @@ export default function ProfileScreen() {
                 size={16}
                 color={Colors.goldAccent}
               />
-              <Text style={styles.editBtnText}>
-                {editMode ? "Cancel" : "Edit"}
-              </Text>
+              <Text style={styles.editBtnText}>{editMode ? "Cancel" : "Edit"}</Text>
             </Pressable>
           </View>
 
           <View style={styles.infoCard}>
             <View style={styles.infoRow}>
-              <Ionicons
-                name="person-outline"
-                size={18}
-                color={Colors.goldAccent}
-              />
+              <Ionicons name="person-outline" size={18} color={Colors.goldAccent} />
               {editMode ? (
                 <TextInput
                   style={styles.infoInput}
@@ -181,11 +171,7 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.rowDivider} />
             <View style={styles.infoRow}>
-              <Ionicons
-                name="call-outline"
-                size={18}
-                color={Colors.goldAccent}
-              />
+              <Ionicons name="call-outline" size={18} color={Colors.goldAccent} />
               {editMode ? (
                 <TextInput
                   style={styles.infoInput}
@@ -201,14 +187,10 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.rowDivider} />
             <View style={styles.infoRow}>
-              <Ionicons
-                name="location-outline"
-                size={18}
-                color={Colors.goldAccent}
-              />
+              <Ionicons name="location-outline" size={18} color={Colors.goldAccent} />
               {editMode ? (
                 <TextInput
-                  style={[styles.infoInput, { flex: 1 }]}
+                  style={[styles.infoInput, styles.infoInputFlex]}
                   value={address}
                   onChangeText={setAddress}
                   placeholder="Delivery address"
@@ -216,7 +198,7 @@ export default function ProfileScreen() {
                   multiline
                 />
               ) : (
-                <Text style={[styles.infoText, { flex: 1 }]}>
+                <Text style={[styles.infoText, styles.infoInputFlex]}>
                   {address || "Not set"}
                 </Text>
               )}
@@ -224,11 +206,7 @@ export default function ProfileScreen() {
           </View>
 
           {editMode && (
-            <Pressable
-              onPress={handleSave}
-              disabled={saving}
-              style={styles.saveBtn}
-            >
+            <Pressable onPress={handleSave} disabled={saving} style={styles.saveBtn}>
               <LinearGradient
                 colors={[Colors.goldStart, Colors.goldEnd]}
                 start={{ x: 0, y: 0 }}
@@ -248,11 +226,7 @@ export default function ProfileScreen() {
           <Text style={styles.cardTitle}>Order History</Text>
           {!phone ? (
             <View style={styles.emptyState}>
-              <Ionicons
-                name="bag-outline"
-                size={32}
-                color="rgba(185,185,195,0.3)"
-              />
+              <Ionicons name="bag-outline" size={32} color="rgba(185,185,195,0.3)" />
               <Text style={styles.emptyTitle}>No orders yet</Text>
               <Text style={styles.emptyText}>
                 Add your phone number above to see your order history.
@@ -261,15 +235,11 @@ export default function ProfileScreen() {
           ) : ordersLoading ? (
             <ActivityIndicator
               color={Colors.goldAccent}
-              style={{ paddingVertical: 24 }}
+              style={styles.activityPad}
             />
           ) : orders.length === 0 ? (
             <View style={styles.emptyState}>
-              <Ionicons
-                name="bag-outline"
-                size={32}
-                color="rgba(185,185,195,0.3)"
-              />
+              <Ionicons name="bag-outline" size={32} color="rgba(185,185,195,0.3)" />
               <Text style={styles.emptyTitle}>No orders yet</Text>
               <Text style={styles.emptyText}>
                 Place your first order and it will appear here.
@@ -295,7 +265,9 @@ export default function ProfileScreen() {
                     style={[
                       styles.statusBadge,
                       {
-                        backgroundColor: `${STATUS_COLORS[o.status] ?? Colors.goldAccent}20`,
+                        backgroundColor: `${
+                          STATUS_COLORS[o.status] ?? Colors.goldAccent
+                        }20`,
                       },
                     ]}
                   >
@@ -334,34 +306,18 @@ export default function ProfileScreen() {
               style={styles.menuItem}
               onPress={() => router.push("/(tabs)/search")}
             >
-              <Ionicons
-                name="search-outline"
-                size={20}
-                color={Colors.goldAccent}
-              />
+              <Ionicons name="search-outline" size={20} color={Colors.goldAccent} />
               <Text style={styles.menuLabel}>Browse Products</Text>
-              <Ionicons
-                name="chevron-forward"
-                size={16}
-                color={Colors.textSecondary}
-              />
+              <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
             </Pressable>
             <View style={styles.rowDivider} />
             <Pressable
               style={styles.menuItem}
               onPress={() => router.push("/(tabs)/cart")}
             >
-              <Ionicons
-                name="bag-outline"
-                size={20}
-                color={Colors.goldAccent}
-              />
+              <Ionicons name="bag-outline" size={20} color={Colors.goldAccent} />
               <Text style={styles.menuLabel}>My Cart</Text>
-              <Ionicons
-                name="chevron-forward"
-                size={16}
-                color={Colors.textSecondary}
-              />
+              <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
             </Pressable>
           </View>
         </View>
@@ -372,16 +328,9 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = {
-  scroll: {
-    paddingHorizontal: 20,
-  },
-
-  heroSection: {
-    alignItems: "center",
-    marginBottom: 28,
-  },
-
+const styles = StyleSheet.create({
+  scroll: { paddingHorizontal: 20 },
+  heroSection: { alignItems: "center", marginBottom: 28 },
   avatarRing: {
     width: 88,
     height: 88,
@@ -390,54 +339,161 @@ const styles = {
     backgroundColor: "rgba(214,162,74,0.2)",
     marginBottom: 12,
   },
-
   avatarGrad: {
     flex: 1,
     borderRadius: 42,
     alignItems: "center",
     justifyContent: "center",
   },
-
   heroName: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#FFFFFF",
-    marginBottom: 4,
+    fontFamily: "PlayfairDisplay_700Bold",
+    fontSize: 22,
+    color: Colors.textPrimary,
+    marginBottom: 6,
   },
-
-  heroSub: {
+  memberBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(214,162,74,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(214,162,74,0.25)",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginBottom: 8,
+  },
+  memberBadgeText: {
+    fontFamily: "CormorantGaramond_600SemiBold",
+    fontSize: 12,
+    color: Colors.goldAccent,
+    letterSpacing: 1,
+  },
+  ordersCount: {
+    fontFamily: "CormorantGaramond_400Regular",
     fontSize: 14,
-    color: "#AAAAAA",
+    color: Colors.textSecondary,
   },
-
-  menuSection: {
-    marginTop: 20,
-  },
-
-  menuItem: {
+  cardSection: { marginBottom: 24 },
+  cardHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.05)",
+    marginBottom: 12,
   },
-
-  menuLeft: {
+  cardTitle: {
+    fontFamily: "PlayfairDisplay_700Bold",
+    fontSize: 18,
+    color: Colors.textPrimary,
+  },
+  editBtn: { flexDirection: "row", alignItems: "center", gap: 5 },
+  editBtnText: {
+    fontFamily: "CormorantGaramond_600SemiBold",
+    fontSize: 14,
+    color: Colors.goldAccent,
+  },
+  infoCard: {
+    backgroundColor: "rgba(20,20,28,0.78)",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(214,162,74,0.15)",
+    overflow: "hidden",
+  },
+  infoRow: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 12,
+    padding: 14,
   },
-
-  menuLabel: {
-    marginLeft: 12,
+  infoText: {
+    fontFamily: "CormorantGaramond_400Regular",
+    fontSize: 15,
+    color: Colors.textSecondary,
+  },
+  infoInput: {
+    fontFamily: "CormorantGaramond_400Regular",
+    fontSize: 15,
+    color: Colors.textPrimary,
+  },
+  infoInputFlex: { flex: 1 },
+  rowDivider: { height: 1, backgroundColor: "rgba(214,162,74,0.08)" },
+  saveBtn: { marginTop: 12, borderRadius: 14, overflow: "hidden" },
+  saveGrad: { paddingVertical: 14, alignItems: "center" },
+  saveBtnText: {
+    fontFamily: "PlayfairDisplay_700Bold",
+    fontSize: 14,
+    color: "#000",
+  },
+  activityPad: { paddingVertical: 24 },
+  emptyState: { alignItems: "center", paddingVertical: 28, gap: 8 },
+  emptyTitle: {
+    fontFamily: "PlayfairDisplay_700Bold",
     fontSize: 16,
-    color: "#FFFFFF",
+    color: Colors.textSecondary,
   },
-
+  emptyText: {
+    fontFamily: "CormorantGaramond_400Regular",
+    fontSize: 14,
+    color: "rgba(185,185,195,0.5)",
+    textAlign: "center",
+  },
+  orderCard: {
+    backgroundColor: "rgba(20,20,28,0.78)",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(214,162,74,0.15)",
+    padding: 14,
+    marginBottom: 10,
+    paddingRight: 32,
+    position: "relative",
+  },
+  orderCardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  orderId: {
+    fontFamily: "PlayfairDisplay_700Bold",
+    fontSize: 14,
+    color: Colors.textPrimary,
+    letterSpacing: 1,
+  },
+  statusBadge: { borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 },
+  statusText: {
+    fontFamily: "CormorantGaramond_600SemiBold",
+    fontSize: 12,
+    textTransform: "capitalize",
+  },
+  orderCardBottom: { flexDirection: "row", justifyContent: "space-between" },
+  orderDate: {
+    fontFamily: "CormorantGaramond_400Regular",
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  orderTotal: {
+    fontFamily: "PlayfairDisplay_700Bold",
+    fontSize: 14,
+    color: Colors.goldAccent,
+  },
+  orderChevron: { position: "absolute", right: 12, top: "50%", marginTop: -7 },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+  },
+  menuLabel: {
+    flex: 1,
+    fontFamily: "CormorantGaramond_600SemiBold",
+    fontSize: 15,
+    color: Colors.textSecondary,
+  },
   versionText: {
     textAlign: "center",
-    marginTop: 30,
-    color: "#777777",
+    fontFamily: "CormorantGaramond_400Regular",
     fontSize: 12,
+    color: "rgba(185,185,195,0.3)",
+    marginTop: 8,
   },
-} as const;
+});

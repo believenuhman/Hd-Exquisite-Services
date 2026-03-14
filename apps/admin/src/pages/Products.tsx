@@ -3,7 +3,7 @@ import { supabase, Product } from "../lib/supabase";
 
 const CATS = ["Beers", "Whiskey", "Wine", "Vodka", "Rum"];
 
-const S: Record<string, React.CSSProperties> = {
+const S = {
   header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 },
   title: { fontFamily: "'Playfair Display',serif", fontSize: 28, fontWeight: 700, color: "#fff" },
   addBtn: {

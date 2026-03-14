@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { supabase, DeliveryZone } from "../lib/supabase";
 
-const S: Record<string, React.CSSProperties> = {
+const S = {
   header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 },
   title: { fontFamily: "'Playfair Display',serif", fontSize: 28, fontWeight: 700, color: "#fff" },
   addBtn: { background: "linear-gradient(90deg,#D6A24A,#F6D27A)", border: "none", borderRadius: 10, padding: "10px 20px", cursor: "pointer", fontFamily: "Inter,sans-serif", fontSize: 13, fontWeight: 600, color: "#000" },

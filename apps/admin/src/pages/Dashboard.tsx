@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase";
 
 type Stats = { products: number; orders: number; revenue: number; pending: number };
 
-const S: Record<string, React.CSSProperties> = {
+const S = {
   title: { fontFamily: "'Playfair Display',serif", fontSize: 28, fontWeight: 700, color: "#fff", marginBottom: 8 },
   sub: { color: "rgba(185,185,195,0.7)", fontFamily: "Inter,sans-serif", fontSize: 14, marginBottom: 32 },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 20, marginBottom: 40 },

@@ -328,5 +328,4 @@ const styles = StyleSheet.create({
   emptyTitle: { color: Colors.textPrimary, fontFamily: "PlayfairDisplay_700Bold", fontSize: 20, marginBottom: 20 },
   homeBtn: { borderWidth: 1, borderColor: Colors.goldAccent, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
   homeBtnText: { color: Colors.goldAccent, fontFamily: "CormorantGaramond_600SemiBold", fontSize: 15 },
-  danger: Colors.danger,
 });

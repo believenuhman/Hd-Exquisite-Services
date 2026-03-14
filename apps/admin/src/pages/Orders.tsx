@@ -3,7 +3,7 @@ import { supabase, Order, OrderItem } from "../lib/supabase";
 
 const STATUSES = ["all", "received", "packing", "out_for_delivery", "delivered", "refused"];
 
-const S: Record<string, React.CSSProperties> = {
+const S = {
   title: { fontFamily: "'Playfair Display',serif", fontSize: 28, fontWeight: 700, color: "#fff", marginBottom: 8 },
   filters: { display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" as const },
   filterBtn: (active: boolean): React.CSSProperties => ({

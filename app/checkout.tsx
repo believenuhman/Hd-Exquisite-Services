@@ -129,7 +129,7 @@ export default function CheckoutScreen() {
         order_id: order.id,
         product_id: i.product.id,
         name: i.product.name,
-        qty: i.qty,
+        qty: i.quantity,
         unit_price: i.product.price,
       }));
 
@@ -197,8 +197,8 @@ export default function CheckoutScreen() {
         <View style={styles.summaryCard}>
           {items.map((i) => (
             <View key={i.product.id} style={styles.summaryRow}>
-              <Text style={styles.summaryItemName}>{i.product.name} ×{i.qty}</Text>
-              <Text style={styles.summaryItemPrice}>{formatPrice(i.product.price * i.qty)}</Text>
+              <Text style={styles.summaryItemName}>{i.product.name} ×{i.quantity}</Text>
+              <Text style={styles.summaryItemPrice}>{formatPrice(i.product.price * i.quantity)}</Text>
             </View>
           ))}
           <View style={styles.summaryDivider} />
