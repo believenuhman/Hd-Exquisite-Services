@@ -22,6 +22,7 @@ import { CATEGORIES, productMatchesCategory } from "@/constants/categories";
 import { supabase, Product } from "@/lib/supabase";
 import { ProductCard } from "@/components/ProductCard";
 import { ScreenBackground } from "@/components/ScreenBackground";
+import { DrawerMenu } from "@/components/DrawerMenu";
 import { useCart } from "@/context/CartContext";
 import { useAppSettings } from "@/context/AppSettingsContext";
 
@@ -31,7 +32,7 @@ const GRID_GAP = 12;
 const GRID_CARD_W = (width - H_PAD * 2 - GRID_GAP) / 2;
 const UD = Platform.OS !== "web";
 const FALLBACK_IMG = require("@/assets/images/hennessy.png");
-const HD_LOGO = require("@/assets/images/hd-logo.png");
+const HD_LOGO = require("@/assets/logo/hd-xquisite-logo-dark.png");
 
 
 function CategoryChip({
@@ -134,6 +135,7 @@ export default function HomeScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
 
+  const [menuOpen, setMenuOpen] = useState(false);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -175,6 +177,7 @@ export default function HomeScreen() {
 
   return (
     <ScreenBackground>
+      <DrawerMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
@@ -194,10 +197,22 @@ export default function HomeScreen() {
       >
         {/* ── Top bar ─────────────────────────────── */}
         <View style={[styles.topBar, { paddingTop: topPad + 14 }]}>
-          <Pressable style={styles.iconBtn} hitSlop={8}>
-            <Ionicons name="menu" size={24} color={Colors.textPrimary} />
+          <Pressable
+            onPress={() => {
+              setMenuOpen(true);
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }}
+            style={styles.iconBtn}
+            hitSlop={8}
+          >
+            <Ionicons name="menu" size={26} color={Colors.textPrimary} />
           </Pressable>
-          <Text style={styles.topTitle}>Home</Text>
+
+          {/* Centered logo */}
+          <Pressable onPress={() => setActiveCategory("All")} style={styles.logoBtn}>
+            <Image source={HD_LOGO} style={styles.headerLogo} resizeMode="contain" />
+          </Pressable>
+
           <View style={styles.topRight}>
             <Pressable
               onPress={() => router.push("/(tabs)/search")}
@@ -234,9 +249,12 @@ export default function HomeScreen() {
           <View style={styles.heroGlowLeft} />
           <View style={styles.heroGlowRight} />
           <View style={styles.heroTextBlock}>
-            <Image source={HD_LOGO} style={styles.heroLogo} resizeMode="contain" />
-            <Text style={styles.heroTitle}>HD XQUISITE{"\n"}LIQUORS</Text>
-            <Text style={styles.heroSub}>Premium Spirits Delivered</Text>
+            <Text style={styles.heroTitle}>Premium{"\n"}Spirits</Text>
+            <Text style={styles.heroSub}>Free delivery on $50+</Text>
+            <View style={styles.heroBadge}>
+              <Ionicons name="flash" size={11} color="#000" />
+              <Text style={styles.heroBadgeText}>Fast Delivery</Text>
+            </View>
           </View>
           <View style={styles.heroBottles}>
             <Image
@@ -422,11 +440,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 16,
   },
-  topTitle: {
-    fontFamily: "PlayfairDisplay_700Bold",
-    fontSize: 18,
-    color: Colors.textPrimary,
-    letterSpacing: 0.3,
+  logoBtn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    marginHorizontal: 4,
+  },
+  headerLogo: {
+    width: 100,
+    height: 52,
   },
   topRight: { flexDirection: "row", alignItems: "center", gap: 4 },
   iconBtn: {
@@ -486,19 +508,35 @@ const styles = StyleSheet.create({
     bottom: -30,
   },
   heroTextBlock: { flex: 1, zIndex: 2 },
-  heroLogo: { width: 48, height: 48, marginBottom: 6 },
   heroTitle: {
     fontFamily: "PlayfairDisplay_900Black",
-    fontSize: 16,
+    fontSize: 20,
     color: Colors.goldAccent,
-    lineHeight: 20,
-    letterSpacing: 1,
+    lineHeight: 25,
+    letterSpacing: 0.5,
+    marginBottom: 4,
   },
   heroSub: {
     fontFamily: "Inter_400Regular",
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.textSecondary,
-    marginTop: 4,
+    marginBottom: 10,
+  },
+  heroBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: Colors.goldAccent,
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  heroBadgeText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    color: "#000",
+    letterSpacing: 0.3,
   },
   heroBottles: {
     flexDirection: "row",
