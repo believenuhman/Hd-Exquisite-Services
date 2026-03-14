@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
+import { CATEGORIES, productMatchesCategory } from "@/constants/categories";
 import { supabase, Product } from "@/lib/supabase";
 import { ProductCard } from "@/components/ProductCard";
 import { ScreenBackground } from "@/components/ScreenBackground";
@@ -26,7 +27,6 @@ import { useAppSettings } from "@/context/AppSettingsContext";
 
 const { width } = Dimensions.get("window");
 const UD = Platform.OS !== "web";
-const CATS = ["Beers", "Whiskey", "Wine", "Vodka", "Rum"];
 const FALLBACK_IMG = require("@/assets/images/hennessy.png");
 
 function CategoryPill({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
@@ -85,7 +85,7 @@ function FeaturedRow({ product, formatPrice }: { product: Product; formatPrice: 
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const [activeCategory, setActiveCategory] = useState("Whiskey");
+  const [activeCategory, setActiveCategory] = useState<string>(CATEGORIES[0]);
   const { addToCart } = useCart();
   const { formatPrice } = useAppSettings();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -109,7 +109,7 @@ export default function HomeScreen() {
   useEffect(() => { fetchProducts(); }, []);
 
   const trending = allProducts.filter((p) => p.is_trending);
-  const filtered = allProducts.filter((p) => p.category.toLowerCase() === activeCategory.toLowerCase());
+  const filtered = allProducts.filter((p) => productMatchesCategory(p.category, activeCategory));
   const displayProducts = filtered.length > 0 ? filtered : allProducts;
 
   return (
@@ -141,7 +141,7 @@ export default function HomeScreen() {
 
         {/* Category chips */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catsRow}>
-          {CATS.map((c) => (
+          {CATEGORIES.map((c) => (
             <CategoryPill key={c} label={c} active={activeCategory === c} onPress={() => setActiveCategory(c)} />
           ))}
         </ScrollView>

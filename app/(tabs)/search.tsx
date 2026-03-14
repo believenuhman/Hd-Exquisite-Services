@@ -16,12 +16,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
+import { CATEGORIES, productMatchesCategory } from "@/constants/categories";
 import { supabase, Product } from "@/lib/supabase";
 import { ScreenBackground } from "@/components/ScreenBackground";
 import { useCart } from "@/context/CartContext";
 import { useAppSettings } from "@/context/AppSettingsContext";
 
-const CATS = ["All", "Beers", "Whiskey", "Wine", "Vodka", "Rum"];
+const CATS = ["All", ...CATEGORIES] as const;
 const SORTS = ["Default", "Price ↑", "Price ↓", "Rating"];
 const FALLBACK_IMG = require("@/assets/images/hennessy.png");
 
@@ -74,7 +75,7 @@ export default function SearchScreen() {
     const q = query.toLowerCase();
     results = results.filter(p => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q) || p.description.toLowerCase().includes(q));
   }
-  if (activeCategory !== "All") results = results.filter(p => p.category.toLowerCase() === activeCategory.toLowerCase());
+  if (activeCategory !== "All") results = results.filter(p => productMatchesCategory(p.category, activeCategory));
   if (activeSort === "Price ↑") results = [...results].sort((a, b) => a.price - b.price);
   else if (activeSort === "Price ↓") results = [...results].sort((a, b) => b.price - a.price);
   else if (activeSort === "Rating") results = [...results].sort((a, b) => b.rating - a.rating);

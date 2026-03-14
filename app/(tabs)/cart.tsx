@@ -14,11 +14,11 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { Colors } from "@/constants/colors";
+import { CATEGORIES } from "@/constants/categories";
 import { useCart, CartItem } from "@/context/CartContext";
 import { useAppSettings } from "@/context/AppSettingsContext";
 import { ScreenBackground } from "@/components/ScreenBackground";
 
-const CATS = ["Beers", "Whiskey", "Wine", "Vodka", "Rum"];
 const FALLBACK_IMG = require("@/assets/images/hennessy.png");
 
 function CartItemRow({ item }: { item: CartItem }) {
@@ -98,7 +98,7 @@ export default function CartScreen() {
   const insets = useSafeAreaInsets();
   const { items, subtotal, clearCart } = useCart();
   const { formatPrice } = useAppSettings();
-  const [activeFilter, setActiveFilter] = useState("Beers");
+  const [activeFilter, setActiveFilter] = useState<string>(CATEGORIES[0]);
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
 
@@ -125,7 +125,7 @@ export default function CartScreen() {
         style={styles.catScrollContainer}
         contentContainerStyle={styles.catScroll}
       >
-        {CATS.map((c) => (
+        {CATEGORIES.map((c) => (
           <Pressable
             key={c}
             onPress={() => setActiveFilter(c)}
