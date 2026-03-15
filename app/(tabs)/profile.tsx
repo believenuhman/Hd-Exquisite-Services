@@ -250,21 +250,19 @@ export default function ProfileScreen() {
         <View style={styles.cardSection}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>My Profile</Text>
-            {!isSignedIn && (
-              <Pressable
-                onPress={() => setEditMode(!editMode)}
-                style={styles.editBtn}
-              >
-                <Ionicons
-                  name={editMode ? "close" : "pencil-outline"}
-                  size={16}
-                  color={Colors.goldAccent}
-                />
-                <Text style={styles.editBtnText}>
-                  {editMode ? "Cancel" : "Edit"}
-                </Text>
-              </Pressable>
-            )}
+            <Pressable
+              onPress={() => setEditMode(!editMode)}
+              style={styles.editBtn}
+            >
+              <Ionicons
+                name={editMode ? "close" : "pencil-outline"}
+                size={16}
+                color={Colors.goldAccent}
+              />
+              <Text style={styles.editBtnText}>
+                {editMode ? "Cancel" : "Edit"}
+              </Text>
+            </Pressable>
           </View>
 
           <View style={styles.infoCard}>
@@ -339,26 +337,15 @@ export default function ProfileScreen() {
                 size={18}
                 color={Colors.goldAccent}
               />
-              {editMode || isSignedIn ? (
-                editMode ? (
-                  <TextInput
-                    style={[styles.infoInput, styles.infoInputFlex]}
-                    value={address}
-                    onChangeText={setAddress}
-                    placeholder="Delivery address"
-                    placeholderTextColor="rgba(185,185,195,0.4)"
-                    multiline
-                  />
-                ) : (
-                  <TextInput
-                    style={[styles.infoInput, styles.infoInputFlex]}
-                    value={address}
-                    onChangeText={setAddress}
-                    placeholder="Add delivery address"
-                    placeholderTextColor="rgba(185,185,195,0.4)"
-                    multiline
-                  />
-                )
+              {editMode ? (
+                <TextInput
+                  style={[styles.infoInput, styles.infoInputFlex]}
+                  value={address}
+                  onChangeText={setAddress}
+                  placeholder="Delivery address"
+                  placeholderTextColor="rgba(185,185,195,0.4)"
+                  multiline
+                />
               ) : (
                 <Text style={[styles.infoText, styles.infoInputFlex]}>
                   {address || "Not set"}
@@ -367,7 +354,7 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {(editMode || isSignedIn) && (
+          {editMode && (
             <Pressable
               onPress={handleSave}
               disabled={saving}
@@ -380,7 +367,7 @@ export default function ProfileScreen() {
                 style={styles.saveGrad}
               >
                 <Text style={styles.saveBtnText}>
-                  {saving ? "Saving…" : "Save Address"}
+                  {saving ? "Saving…" : "Save Changes"}
                 </Text>
               </LinearGradient>
             </Pressable>
