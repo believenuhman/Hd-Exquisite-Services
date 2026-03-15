@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { IoChevronForward } from "react-icons/io5";
 import { supabase, Order } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
+import { storage } from "@/lib/storage";
 
 const STATUS_LABELS: Record<string, string> = {
   received: "Order Received",
@@ -30,10 +31,18 @@ export function Orders() {
     if (user) {
       supabase.from("orders").select("*").order("created_at", { ascending: false })
         .then(({ data }) => { if (data) setOrders(data as Order[]); setLoading(false); });
+    } else if (isGuest) {
+      const savedPhone = storage.get("hd_saved_phone");
+      if (savedPhone) {
+        supabase.from("orders").select("*").eq("customer_phone", savedPhone).order("created_at", { ascending: false })
+          .then(({ data }) => { if (data) setOrders(data as Order[]); setLoading(false); });
+      } else {
+        setLoading(false);
+      }
     } else {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, isGuest]);
 
   const formatDate = (iso: string) => {
     const d = new Date(iso);
@@ -49,7 +58,7 @@ export function Orders() {
       </div>
 
       <div className="flex-1 overflow-y-auto no-scrollbar px-4 py-4" style={{ paddingBottom: 90 }}>
-        {!user ? (
+        {!user && !isGuest ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <span style={{ fontSize: 40 }}>🔐</span>
             <p className="font-inter text-white font-semibold">Sign in to view orders</p>

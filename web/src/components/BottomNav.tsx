@@ -1,12 +1,13 @@
 import React from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { IoHome, IoSearch, IoCart, IoPerson } from "react-icons/io5";
+import { IoHome, IoSearch, IoCart, IoPerson, IoReceipt } from "react-icons/io5";
 import { useCart } from "@/context/CartContext";
 
 const TABS = [
   { path: "/", label: "Home", Icon: IoHome },
   { path: "/search", label: "Search", Icon: IoSearch },
   { path: "/cart", label: "Cart", Icon: IoCart },
+  { path: "/orders", label: "Orders", Icon: IoReceipt },
   { path: "/profile", label: "Profile", Icon: IoPerson },
 ];
 
@@ -41,7 +42,7 @@ export function BottomNav() {
             >
               <div className="relative">
                 <Icon
-                  size={24}
+                  size={22}
                   color={active ? "#E4A12B" : "rgba(255,255,255,0.38)"}
                 />
                 {isCart && totalItems > 0 && (
@@ -62,7 +63,7 @@ export function BottomNav() {
               </div>
               <span
                 className="font-inter text-center"
-                style={{ fontSize: 10, color: active ? "#E4A12B" : "rgba(255,255,255,0.38)", letterSpacing: 0.5 }}
+                style={{ fontSize: 9, color: active ? "#E4A12B" : "rgba(255,255,255,0.38)", letterSpacing: 0.3 }}
               >
                 {label}
               </span>

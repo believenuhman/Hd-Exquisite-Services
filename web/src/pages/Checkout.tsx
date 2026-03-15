@@ -4,16 +4,19 @@ import { IoChevronBack, IoCheckmarkCircle, IoAlertCircle } from "react-icons/io5
 import { supabase, DeliveryZone } from "@/lib/supabase";
 import { useCart } from "@/context/CartContext";
 import { useAppSettings } from "@/context/AppSettingsContext";
+import { useAuth } from "@/context/AuthContext";
+import { storage } from "@/lib/storage";
 
 export function Checkout() {
   const navigate = useNavigate();
   const { items, subtotal, clearCart } = useCart();
   const { settings } = useAppSettings();
+  const { user } = useAuth();
   const [zones, setZones] = useState<DeliveryZone[]>([]);
   const [selectedZone, setSelectedZone] = useState<DeliveryZone | null>(null);
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
+  const [name, setName] = useState(() => storage.get("hd_saved_name") ?? user?.user_metadata?.full_name ?? "");
+  const [phone, setPhone] = useState(() => storage.get("hd_saved_phone") ?? user?.user_metadata?.phone ?? "");
+  const [address, setAddress] = useState(() => storage.get("hd_saved_address") ?? storage.get("hd_profile_address") ?? "");
   const [notes, setNotes] = useState("");
   const [ageConfirm, setAgeConfirm] = useState(false);
   const [idConfirm, setIdConfirm] = useState(false);
@@ -39,6 +42,9 @@ export function Checkout() {
     if (!idConfirm) return setError("You must confirm you have valid ID.");
     if (items.length === 0) return setError("Your cart is empty.");
     setLoading(true);
+    storage.set("hd_saved_name", name.trim());
+    storage.set("hd_saved_phone", phone.trim());
+    storage.set("hd_saved_address", address.trim());
 
     const { data: order, error: orderErr } = await supabase.from("orders").insert({
       customer_name: name,
