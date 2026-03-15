@@ -5,9 +5,10 @@ modules = ["nodejs-22"]
 channel = "stable-24_05"
 
 [deployment]
-deploymentTarget = "cloudrun"
-build = ["sh", "-c", "npm run expo:static:build && npm run server:build"]
+deploymentTarget = "static"
+build = ["sh", "-c", "cd web && npm install --legacy-peer-deps && node_modules/.bin/vite build"]
 run = ["npm", "run", "server:prod"]
+publicDir = "web/dist"
 
 [[ports]]
 localPort = 3000
@@ -65,34 +66,13 @@ task = "workflow.run"
 args = "Start Frontend"
 
 [[workflows.workflow]]
-name = "Start Backend"
-author = "agent"
-mode = "sequential"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm run server:dev"
-waitForPort = 5000
-
-[[workflows.workflow]]
-name = "Start Frontend"
-author = "agent"
-mode = "sequential"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm run expo:dev"
-waitForPort = 8081
-ensurePreviewReachable = "/status"
-
-[[workflows.workflow]]
 name = "Start Web App"
 author = "agent"
 
 [workflows.workflow.metadata]
-outputType = "console"
+outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd web && npm install --legacy-peer-deps && node_modules/.bin/vite"
-waitForPort = 5173
+waitForPort = 5000
