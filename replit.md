@@ -1,15 +1,27 @@
 # HD Xquisite Liquors
 
-A premium liquor delivery mobile app built with Expo React Native, inspired by Drizly/Uber Eats UX with HD XQUISITE brand identity.
+A premium liquor delivery app with two frontends: a React Native mobile app (Expo) and a mobile-first web app (React + Vite) built for Median web wrapping.
 
 ## Architecture
 
-- **Frontend**: Expo Router (file-based routing), React Native
+- **Mobile App (Expo)**: Expo Router (file-based routing), React Native — port 8081
+- **Web App (Vite)**: React + Vite + Tailwind CSS, mobile-first design — port 5173 (`web/`)
 - **Backend**: Express.js on port 5000
 - **Database**: Supabase (PostgreSQL)
-- **Auth**: Supabase Auth with AsyncStorage session persistence
+- **Auth**: Supabase Auth with AsyncStorage (mobile) / localStorage (web) session persistence
 - **State**: React Context (CartContext, AuthContext, AgeGateContext, AppSettingsContext)
 - **Fonts**: PlayfairDisplay (headings/900) + CormorantGaramond (body) + Inter (UI/product cards)
+
+## Web App (`web/`)
+
+- **Entry**: `web/src/main.tsx` — max-width 480px mobile-first layout
+- **Router**: React Router DOM v6 (hash-based)
+- **Styling**: Tailwind CSS with custom font/color tokens + inline `index.css` animations
+- **Build**: Vite 5 — `cd web && npm run build` produces `web/dist/`
+- **PWA**: `web/public/manifest.json` + icons — enables "Add to Home Screen" on mobile
+- **Workflow**: "Start Web App" — `cd web && npm install --legacy-peer-deps && node_modules/.bin/vite`
+- **Pages**: AgeGate → Welcome → Login/Signup/ForgotPassword → Home → Search → ProductDetail → Cart → Checkout → Profile → Orders → OrderTracking
+- **Components**: SplashScreen, BottomNav, DrawerMenu, ProductCard, GoldButton, ScreenBackground
 
 ## Design System
 

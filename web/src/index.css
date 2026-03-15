@@ -1,0 +1,124 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --gold: #E4A12B;
+    --magenta: #C91E8C;
+    --bg: #09090C;
+  }
+  * { -webkit-tap-highlight-color: transparent; }
+  body { overscroll-behavior: none; }
+  input, textarea, button { outline: none; }
+  input:focus, textarea:focus { outline: none; }
+  ::-webkit-scrollbar { display: none; }
+  * { scrollbar-width: none; }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .safe-top { padding-top: env(safe-area-inset-top, 0px); }
+}
+
+@keyframes glowPulse {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.06); }
+}
+@keyframes glowPulse2 {
+  0%, 100% { opacity: 0.2; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.08); }
+}
+@keyframes glowPulse3 {
+  0%, 100% { opacity: 0.12; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(1.1); }
+}
+@keyframes logoSpring {
+  0% { opacity: 0; transform: scale(0.5); }
+  60% { opacity: 1; transform: scale(1.08); }
+  80% { transform: scale(0.96); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes fadeUp {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes slideInLeft {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(0); }
+}
+@keyframes slideOutLeft {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@keyframes bounce-subtle {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(0.95); }
+}
+
+.animate-glow1 { animation: glowPulse 3s ease-in-out infinite; }
+.animate-glow2 { animation: glowPulse2 3.5s ease-in-out infinite 0.5s; }
+.animate-glow3 { animation: glowPulse3 4s ease-in-out infinite 1s; }
+.animate-logo-spring { animation: logoSpring 0.8s cubic-bezier(0.175,0.885,0.32,1.275) forwards; }
+.animate-fade-up { animation: fadeUp 0.6s ease-out forwards; }
+.animate-fade-up-delay { animation: fadeUp 0.6s ease-out 0.3s both; }
+.animate-fade-up-delay2 { animation: fadeUp 0.6s ease-out 0.6s both; }
+.animate-fade-up-delay3 { animation: fadeUp 0.6s ease-out 0.9s both; }
+.animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+.animate-float { animation: float 3s ease-in-out infinite; }
+.animate-spin-slow { animation: spin 3s linear infinite; }
+
+.gold-gradient {
+  background: linear-gradient(135deg, #D4901A, #F5C842);
+}
+.gold-gradient-text {
+  background: linear-gradient(135deg, #D4901A, #F5C842);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.magenta-gradient {
+  background: linear-gradient(135deg, #C91E8C, #A0176D);
+}
+.card-gradient {
+  background: linear-gradient(145deg, rgba(30,24,40,0.9), rgba(18,18,18,0.95));
+}
+.screen-bg {
+  background: linear-gradient(160deg, #0D0B14 0%, #09090C 40%, #0A0808 100%);
+}
+.gold-border {
+  border: 1px solid rgba(228,161,43,0.2);
+}
+.magenta-glow {
+  box-shadow: 0 0 20px rgba(201,30,140,0.3);
+}
+.gold-glow {
+  box-shadow: 0 0 20px rgba(228,161,43,0.25);
+}
+.card-shadow {
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5), 0 1px 4px rgba(0,0,0,0.3);
+}
+.press-active:active {
+  transform: scale(0.97);
+  transition: transform 0.1s;
+}
+.drawer-open { animation: slideInLeft 0.3s ease-out forwards; }
+.page-enter { animation: fadeIn 0.2s ease-out forwards; }
