@@ -6,31 +6,35 @@ A premium liquor delivery mobile app built with Expo React Native, inspired by D
 
 - **Frontend**: Expo Router (file-based routing), React Native
 - **Backend**: Express.js on port 5000
-- **State**: React Context (CartContext) for cart management
-- **Fonts**: Playfair Display (headings) + Cormorant Garamond (body) + Inter (UI/product cards)
+- **Database**: Supabase (PostgreSQL)
+- **Auth**: Supabase Auth with AsyncStorage session persistence
+- **State**: React Context (CartContext, AuthContext, AgeGateContext, AppSettingsContext)
+- **Fonts**: PlayfairDisplay (headings/900) + CormorantGaramond (body) + Inter (UI/product cards)
 
 ## Design System
 
 - Background: `#09090C` (deep black)
-- Product Cards: `#FFFFFF` (white, clean ecommerce style)
-- Card Image Area: `#F4EFE6` (warm cream)
-- Dark Cards: `#13121A` (banners, order cards)
+- Product Cards: `#121212` + `#1C1828` image area (dark premium)
+- Dark Cards: `#13121A` (orders, tracking)
 - Gold Gradient: `#D4901A → #F5C842`
-- Gold Accent: `#E4A12B` (category pills, badges, add buttons)
-- Magenta Accent: `#C91E8C` (cart badge, brand accent)
+- Gold Accent: `#E4A12B`
+- Magenta Accent: `#C91E8C`
+- Search bars: `#1A1A26` bg + `rgba(228,161,43,0.2)` gold border
 - Tab Bar: `#0C0B10`
 - All colors: `constants/colors.ts`
 
 ## Brand Assets
 
-- `assets/images/hd-logo.png` — HD XQUISITE globe logo (magenta + gold)
+- `assets/logo/hd-xquisite-logo-dark.png` — PRIMARY official logo (use everywhere)
+- `assets/images/logo.jpg` — OLD file, do NOT use
 - `assets/images/hennessy.png`, `vodka.png`, `rum.png`, `wine.png` — local fallback bottle images
 
 ## Reusable Components
 
 - `components/ScreenBackground.tsx` — dark gradient + particle background
-- `components/ProductCard.tsx` — 162px white portrait card with bestseller badge + rating pill
-- `components/SplashOverlay.tsx` — animated splash screen
+- `components/ProductCard.tsx` — 162px dark portrait card with bestseller badge + rating pill
+- `components/SplashOverlay.tsx` — animated splash screen with glow rings + floating particles
+- `components/DrawerMenu.tsx` — slide-in navigation drawer (uses Modal, pointerEvents in style)
 
 ## Screens
 

@@ -239,7 +239,7 @@ const styles = StyleSheet.create({
   ratingBadgeText: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 12, color: Colors.goldAccent },
   productName: { fontFamily: "PlayfairDisplay_900Black", fontSize: 28, color: Colors.textPrimary, letterSpacing: 0.5, marginBottom: 8, lineHeight: 34 },
   starsRow: { flexDirection: "row", gap: 3, marginBottom: 12 },
-  descScroll: { maxHeight: 80, marginBottom: 12 },
+  descScroll: { maxHeight: 130, marginBottom: 12 },
   description: { fontFamily: "CormorantGaramond_400Regular", fontSize: 15, color: "#B9B9C3", lineHeight: 22 },
   priceRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 },
   price: { fontFamily: "PlayfairDisplay_900Black", fontSize: 32, color: Colors.textGold },

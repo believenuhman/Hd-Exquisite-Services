@@ -50,7 +50,7 @@ export default function AgeGateScreen() {
 
       <Animated.View style={[styles.content, { opacity, transform: [{ translateY: slideY }], paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0), paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) }]}>
         <Image
-          source={require("@/assets/images/logo.jpg")}
+          source={require("@/assets/logo/hd-xquisite-logo-dark.png")}
           style={styles.logo}
           resizeMode="contain"
         />
@@ -108,10 +108,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   logo: {
-    width: 100,
-    height: 100,
-    borderRadius: 20,
-    marginBottom: 20,
+    width: 140,
+    height: 140,
+    marginBottom: 16,
   },
   title: {
     fontFamily: "PlayfairDisplay_900Black",

@@ -12,7 +12,6 @@ import {
   Animated,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -153,13 +152,13 @@ export default function SearchScreen() {
     <View style={[styles.headerArea, { paddingTop: topPad + 16 }]}>
       <Text style={styles.pageTitle}>Search</Text>
 
-      {/* Search input */}
+      {/* Search input — dark theme */}
       <View style={styles.searchBox}>
-        <Ionicons name="search" size={18} color="rgba(80,80,90,0.55)" />
+        <Ionicons name="search" size={18} color="rgba(185,185,195,0.5)" />
         <TextInput
           style={styles.searchInput}
           placeholder="Search spirits, wines, cocktails…"
-          placeholderTextColor="rgba(80,80,90,0.5)"
+          placeholderTextColor="rgba(185,185,195,0.45)"
           value={query}
           onChangeText={setQuery}
           autoCapitalize="none"
@@ -167,7 +166,7 @@ export default function SearchScreen() {
         />
         {query.length > 0 && (
           <Pressable onPress={() => setQuery("")} hitSlop={10}>
-            <Ionicons name="close-circle" size={18} color="rgba(80,80,90,0.5)" />
+            <Ionicons name="close-circle" size={18} color="rgba(185,185,195,0.5)" />
           </Pressable>
         )}
       </View>
@@ -282,27 +281,24 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  /* Search box */
+  /* Search box — dark theme */
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#1A1A26",
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 13,
     marginBottom: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: "rgba(228,161,43,0.2)",
   },
   searchInput: {
     flex: 1,
     fontFamily: "Inter_400Regular",
     fontSize: 15,
-    color: Colors.textDark,
+    color: Colors.textPrimary,
   },
 
   /* Chips */

@@ -283,7 +283,7 @@ export default function HomeScreen() {
           onPress={() => router.push("/(tabs)/search")}
           style={styles.searchBar}
         >
-          <Ionicons name="search" size={18} color="rgba(100,100,110,0.7)" />
+          <Ionicons name="search" size={18} color="rgba(185,185,195,0.5)" />
           <Text style={styles.searchPlaceholder}>Search drinks…</Text>
           <View style={styles.searchFilter}>
             <Ionicons name="options-outline" size={16} color={Colors.goldAccent} />
@@ -451,25 +451,25 @@ const styles = StyleSheet.create({
   logoHeader: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 10,
-    marginBottom: 14,
+    paddingVertical: 12,
+    marginBottom: 16,
     position: "relative",
   },
   logoGlow: {
     position: "absolute",
-    width: 220,
-    height: 100,
-    borderRadius: 50,
+    width: 280,
+    height: 120,
+    borderRadius: 60,
     backgroundColor: "rgba(228,161,43,0.07)",
     shadowColor: Colors.goldAccent,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 28,
+    shadowOpacity: 0.4,
+    shadowRadius: 32,
     elevation: 0,
   },
   headerLogo: {
-    width: 200,
-    height: 80,
+    width: 240,
+    height: 96,
   },
 
   topRight: { flexDirection: "row", alignItems: "center", gap: 4 },
@@ -576,27 +576,24 @@ const styles = StyleSheet.create({
     marginHorizontal: 6,
   },
 
-  /* Search bar */
+  /* Search bar — dark theme */
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#1A1A26",
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 13,
     marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: "rgba(228,161,43,0.2)",
   },
   searchPlaceholder: {
     flex: 1,
     fontFamily: "Inter_400Regular",
     fontSize: 14,
-    color: "rgba(80,80,90,0.65)",
+    color: "rgba(185,185,195,0.5)",
   },
   searchFilter: {
     width: 30,
@@ -723,7 +720,7 @@ const styles = StyleSheet.create({
   },
   gridRatingText: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 9,
+    fontSize: 10,
     color: Colors.goldAccent,
   },
   gridInfo: {
@@ -758,7 +755,7 @@ const styles = StyleSheet.create({
 
   /* Empty */
   emptyWrap: {
-    paddingVertical: 50,
+    paddingVertical: 60,
     alignItems: "center",
     gap: 10,
   },

@@ -34,7 +34,7 @@ interface Order {
   id: string;
   created_at: string;
   status: string;
-  total_amount: number;
+  total: number;
   delivery_address: string;
   customer_name: string;
 }
@@ -70,7 +70,7 @@ function OrderCard({ order, formatPrice }: { order: Order; formatPrice: (n: numb
             {order.delivery_address}
           </Text>
         </View>
-        <Text style={styles.orderTotal}>{formatPrice(order.total_amount)}</Text>
+        <Text style={styles.orderTotal}>{formatPrice(order.total)}</Text>
       </View>
     </Pressable>
   );
@@ -96,7 +96,7 @@ export default function OrdersScreen() {
       }
       const { data } = await supabase
         .from("orders")
-        .select("id,created_at,status,total_amount,delivery_address,customer_name")
+        .select("id,created_at,status,total,delivery_address,customer_name")
         .eq("customer_phone", phone)
         .order("created_at", { ascending: false });
       if (data) setOrders(data as Order[]);

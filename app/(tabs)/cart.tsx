@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   View,
   Text,
@@ -14,7 +14,6 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { Colors } from "@/constants/colors";
-import { CATEGORIES } from "@/constants/categories";
 import { useCart, CartItem } from "@/context/CartContext";
 import { useAppSettings } from "@/context/AppSettingsContext";
 import { ScreenBackground } from "@/components/ScreenBackground";
@@ -56,7 +55,6 @@ function CartItemRow({ item }: { item: CartItem }) {
         <Text style={styles.itemPrice}>
           ${(item.product.price * item.quantity).toFixed(2)}
         </Text>
-
       </View>
 
       <View style={styles.itemRight}>
@@ -84,11 +82,20 @@ function CartItemRow({ item }: { item: CartItem }) {
               colors={[Colors.goldStart, Colors.goldEnd]}
               style={styles.qtyBtnAddGrad}
             >
-              <Text style={styles.qtyAddText}>Add</Text>
-              <Ionicons name="add" size={12} color="#0B0B0F" />
+              <Ionicons name="add" size={14} color="#0B0B0F" />
             </LinearGradient>
           </Pressable>
         </View>
+        <Pressable
+          onPress={() => {
+            removeFromCart(item.product.id);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }}
+          style={styles.removeBtn}
+          hitSlop={6}
+        >
+          <Ionicons name="trash-outline" size={15} color="rgba(185,185,195,0.45)" />
+        </Pressable>
       </View>
     </View>
   );
@@ -98,7 +105,6 @@ export default function CartScreen() {
   const insets = useSafeAreaInsets();
   const { items, subtotal, clearCart } = useCart();
   const { formatPrice } = useAppSettings();
-  const [activeFilter, setActiveFilter] = useState<string>(CATEGORIES[0]);
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
 
@@ -119,34 +125,6 @@ export default function CartScreen() {
         )}
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.catScrollContainer}
-        contentContainerStyle={styles.catScroll}
-      >
-        {CATEGORIES.map((c) => (
-          <Pressable
-            key={c}
-            onPress={() => setActiveFilter(c)}
-            style={styles.catPillWrap}
-          >
-            {activeFilter === c ? (
-              <LinearGradient
-                colors={[Colors.goldStart, Colors.goldEnd]}
-                style={styles.catPillFilled}
-              >
-                <Text style={styles.catPillActiveText}>{c}</Text>
-              </LinearGradient>
-            ) : (
-              <View style={styles.catPillInactive}>
-                <Text style={styles.catPillInactiveText}>{c}</Text>
-              </View>
-            )}
-          </Pressable>
-        ))}
-      </ScrollView>
-
       {items.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={styles.emptyIconCircle}>
@@ -156,6 +134,19 @@ export default function CartScreen() {
           <Text style={styles.emptySubtitle}>
             Browse our collection and add your favorites
           </Text>
+          <Pressable
+            style={styles.shopBtn}
+            onPress={() => router.push("/(tabs)")}
+          >
+            <LinearGradient
+              colors={[Colors.goldStart, Colors.goldEnd]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.shopBtnGrad}
+            >
+              <Text style={styles.shopBtnText}>Start Shopping</Text>
+            </LinearGradient>
+          </Pressable>
         </View>
       ) : (
         <>
@@ -163,7 +154,7 @@ export default function CartScreen() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[
               styles.listContent,
-              { paddingBottom: botPad + 200 },
+              { paddingBottom: botPad + 220 },
             ]}
           >
             {items.map((item) => (
@@ -181,24 +172,22 @@ export default function CartScreen() {
               colors={["rgba(11,11,15,0)", Colors.background]}
               style={[styles.summaryFade, { pointerEvents: "none" } as any]}
             />
-            <LinearGradient
-              colors={[Colors.background, Colors.background]}
-              style={styles.summaryBg}
-            />
+            <View style={styles.summaryBgBlock} />
+
             <View style={styles.summaryDivider} />
 
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Subtotal:</Text>
+              <Text style={styles.summaryLabel}>Subtotal</Text>
               <Text style={styles.summaryValue}>{formatPrice(subtotal)}</Text>
             </View>
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Delivery:</Text>
-              <Text style={styles.summaryValue}>Calculated at checkout</Text>
+              <Text style={styles.summaryLabel}>Delivery</Text>
+              <Text style={[styles.summaryValue, styles.summaryNote]}>
+                Calculated at checkout
+              </Text>
             </View>
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Subtotal</Text>
-              <Text style={styles.totalValue}>{formatPrice(subtotal)}</Text>
-            </View>
+
+            <View style={styles.totalDivider} />
 
             <Pressable
               style={styles.checkoutBtn}
@@ -213,7 +202,7 @@ export default function CartScreen() {
                 end={{ x: 1, y: 0 }}
                 style={styles.checkoutGrad}
               >
-                <Text style={styles.checkoutText}>Proceed to Checkout</Text>
+                <Text style={styles.checkoutText}>Checkout — {formatPrice(subtotal)}</Text>
                 <Ionicons name="arrow-forward" size={18} color="#0B0B0F" />
               </LinearGradient>
             </Pressable>
@@ -228,58 +217,20 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 16,
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
     paddingBottom: 14,
-    position: "relative",
   },
   headerTitle: {
-    fontSize: 22,
-    fontFamily: "PlayfairDisplay_700Bold",
+    fontSize: 28,
+    fontFamily: "PlayfairDisplay_900Black",
     color: Colors.textPrimary,
-    letterSpacing: 0.5,
-  },
-  catScrollContainer: {
-    flexGrow: 0,
-    marginBottom: 12,
-  },
-  catScroll: {
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingRight: 24,
-  },
-  catPillWrap: {
-    borderRadius: 50,
-    overflow: "hidden",
-  },
-  catPillFilled: {
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    borderRadius: 50,
-  },
-  catPillActiveText: {
-    fontSize: 13,
-    fontFamily: "CormorantGaramond_600SemiBold",
-    color: "#0B0B0F",
-    letterSpacing: 0.3,
-  },
-  catPillInactive: {
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    borderRadius: 50,
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-  },
-  catPillInactiveText: {
-    fontSize: 13,
-    fontFamily: "CormorantGaramond_400Regular",
-    color: "rgba(185,185,195,0.75)",
     letterSpacing: 0.3,
   },
   listContent: {
     paddingHorizontal: 16,
     gap: 12,
+    paddingTop: 4,
   },
   itemRow: {
     flexDirection: "row",
@@ -296,14 +247,15 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   thumbContainer: {
-    width: 80,
-    height: 90,
+    width: 82,
+    height: 92,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
   thumbImage: {
-    width: 60,
-    height: 78,
+    width: 62,
+    height: 80,
   },
   itemCenter: {
     flex: 1,
@@ -312,10 +264,10 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   itemName: {
-    fontSize: 15,
-    fontFamily: "PlayfairDisplay_700Bold",
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
     color: Colors.textPrimary,
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   starsRow: {
     flexDirection: "row",
@@ -330,8 +282,10 @@ const styles = StyleSheet.create({
   },
   itemRight: {
     paddingRight: 12,
-    alignItems: "flex-end",
+    paddingLeft: 8,
+    alignItems: "center",
     justifyContent: "center",
+    gap: 8,
   },
   qtyControl: {
     flexDirection: "row",
@@ -353,26 +307,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "PlayfairDisplay_700Bold",
     color: Colors.textPrimary,
-    minWidth: 18,
+    minWidth: 20,
     textAlign: "center",
   },
   qtyBtnAdd: {
-    borderRadius: 0,
     overflow: "hidden",
     height: 34,
   },
   qtyBtnAddGrad: {
-    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 10,
     height: 34,
-    gap: 3,
   },
-  qtyAddText: {
-    fontSize: 12,
-    fontFamily: "CormorantGaramond_600SemiBold",
-    color: "#0B0B0F",
-    letterSpacing: 0.3,
+  removeBtn: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
   },
   summaryArea: {
     position: "absolute",
@@ -389,7 +341,7 @@ const styles = StyleSheet.create({
     right: 0,
     height: 30,
   },
-  summaryBg: {
+  summaryBgBlock: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: Colors.background,
   },
@@ -401,40 +353,30 @@ const styles = StyleSheet.create({
   summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 8,
   },
   summaryLabel: {
-    fontSize: 15,
+    fontSize: 14,
     fontFamily: "CormorantGaramond_400Regular",
-    color: "rgba(185,185,195,0.8)",
+    color: "rgba(185,185,195,0.75)",
     letterSpacing: 0.3,
   },
   summaryValue: {
-    fontSize: 15,
+    fontSize: 14,
     fontFamily: "CormorantGaramond_600SemiBold",
     color: Colors.textPrimary,
     letterSpacing: 0.3,
   },
-  totalRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  summaryNote: {
+    color: "rgba(185,185,195,0.55)",
+    fontSize: 13,
+  },
+  totalDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.06)",
     marginTop: 4,
-    marginBottom: 16,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
-  },
-  totalLabel: {
-    fontSize: 20,
-    fontFamily: "PlayfairDisplay_700Bold",
-    color: Colors.textPrimary,
-    letterSpacing: 0.5,
-  },
-  totalValue: {
-    fontSize: 22,
-    fontFamily: "PlayfairDisplay_700Bold",
-    color: Colors.textGold,
-    letterSpacing: 0.5,
+    marginBottom: 14,
   },
   checkoutBtn: {
     borderRadius: 16,
@@ -449,7 +391,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   checkoutText: {
-    fontSize: 16,
+    fontSize: 15,
     fontFamily: "PlayfairDisplay_700Bold",
     color: "#0B0B0F",
     letterSpacing: 0.5,
@@ -484,5 +426,21 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 22,
     letterSpacing: 0.3,
+  },
+  shopBtn: {
+    marginTop: 4,
+    borderRadius: 14,
+    overflow: "hidden",
+  },
+  shopBtnGrad: {
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  shopBtnText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+    color: "#000",
+    letterSpacing: 0.5,
   },
 });

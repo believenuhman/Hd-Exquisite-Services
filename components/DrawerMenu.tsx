@@ -103,16 +103,14 @@ export function DrawerMenu({ open, onClose }: DrawerMenuProps) {
     >
       {/* ── dim backdrop — tap to close ── */}
       <Animated.View
-        style={[styles.backdrop, { opacity: bgOpacity }]}
-        pointerEvents={open ? "auto" : "none"}
+        style={[styles.backdrop, { opacity: bgOpacity, pointerEvents: open ? "auto" : "none" } as any]}
       >
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       </Animated.View>
 
       {/* ── slide-in drawer panel ── */}
       <Animated.View
-        style={[styles.drawer, { transform: [{ translateX: slideX }] }]}
-        pointerEvents={open ? "auto" : "none"}
+        style={[styles.drawer, { transform: [{ translateX: slideX }], pointerEvents: open ? "auto" : "none" } as any]}
       >
         {/* Dark gradient fill */}
         <LinearGradient
