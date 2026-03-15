@@ -62,27 +62,43 @@ Root Stack → Tabs (Home, Search, Cart[badge], Profile) + Product Detail (slide
 - **Profiles table**: SQL in `supabase-schema.sql` — run in Supabase SQL Editor to auto-create profiles on signup via trigger
 - **Extra user fields**: `full_name` + `phone` stored in Supabase `user_metadata` on sign up
 
-## Android APK Build (EAS)
+## Android Build (EAS — Standalone, No Expo Go)
 
 - **EAS CLI**: `eas-cli@18.3.0` installed (local `node_modules/.bin/eas`)
 - **Android package**: `com.hdxquisiteliquors.app`
 - **iOS bundle ID**: `com.hdxquisiteliquors.app`
 - **App slug**: `hd-xquisite-liquors`
 - **Deep-link scheme**: `hdxquisiteliquors`
-- **eas.json profiles**:
-  - `preview` → `buildType: apk` (sideload/test APK, `distribution: internal`)
-  - `production` → `buildType: app-bundle` (Play Store AAB)
-  - `development` → development client build
+- **Config file**: `app.config.ts` (overrides `app.json`; `app.json` is now a minimal stub)
+- **Expo Go origin removed**: `app.config.ts` only injects the Replit origin when `EXPO_PUBLIC_DOMAIN` is present (dev). Production builds get no origin → native scheme routing.
+- **OTA updates**: disabled (`updates.enabled: false`) — standalone binary, no EAS Update server required.
 
-### To build an APK
+### EAS build profiles (eas.json)
+| Profile | Output | Distribution | Use case |
+|---------|--------|--------------|----------|
+| `development` | APK (dev client) | internal | Expo Dev Client for local debugging |
+| `preview` | APK | internal | Sideload & QA test (no Expo Go required) |
+| `production` | **APK** | internal | Standalone production APK — installs directly |
+| `store` | AAB | store | Play Store submission |
+
+### Before building: set the production API URL
+Edit `eas.json` and replace `https://YOUR_BACKEND_URL_HERE` in all three non-dev profiles with the deployed backend URL. Alternatively set it in the [EAS Dashboard](https://expo.dev) under **Environment Variables**.
+
+### To build a standalone production APK
 ```bash
-# Log in to your Expo account first (one-time)
+# One-time: log in to your Expo account
 npx eas login
 
-# Then kick off the APK build
-npx eas build -p android --profile preview
+# Build standalone APK (no Expo Go, no dev server)
+npx eas build -p android --profile production
 ```
-EAS will queue a cloud build and return a download URL for the `.apk` when done.
+EAS queues a cloud build and returns a download URL for the `.apk`. Install directly on any Android device — it opens like a normal app.
+
+### To submit to the Play Store
+```bash
+npx eas build -p android --profile store
+npx eas submit -p android --profile store
+```
 
 ## Products (data/products.ts)
 

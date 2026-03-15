@@ -2,19 +2,28 @@ import { fetch } from "expo/fetch";
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 /**
- * Gets the base URL for the Express API server (e.g., "http://localhost:3000")
- * @returns {string} The API base URL
+ * Gets the base URL for the Express API server.
+ *
+ * Resolution order:
+ *  1. EXPO_PUBLIC_API_URL — set in eas.json for production builds
+ *  2. EXPO_PUBLIC_DOMAIN  — injected by the Replit dev workflow
+ *  3. localhost:5000       — fallback for local development
  */
 export function getApiUrl(): string {
-  let host = process.env.EXPO_PUBLIC_DOMAIN;
-
-  if (!host) {
-    throw new Error("EXPO_PUBLIC_DOMAIN is not set");
+  // Production EAS builds: explicit backend URL baked in at build time
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    const url = process.env.EXPO_PUBLIC_API_URL;
+    return url.endsWith("/") ? url : `${url}/`;
   }
 
-  let url = new URL(`https://${host}`);
+  // Replit dev environment: domain injected by the workflow
+  if (process.env.EXPO_PUBLIC_DOMAIN) {
+    const url = new URL(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
+    return url.href;
+  }
 
-  return url.href;
+  // Local fallback — never runs in a deployed build
+  return "http://localhost:5000/";
 }
 
 async function throwIfResNotOk(res: Response) {
