@@ -18,6 +18,8 @@ import { Profile } from "@/pages/Profile";
 import { Orders } from "@/pages/Orders";
 import { ProductDetail } from "@/pages/ProductDetail";
 import { OrderTracking } from "@/pages/OrderTracking";
+import { Settings } from "@/pages/Settings";
+import { ContactSupport } from "@/pages/ContactSupport";
 
 const TAB_PATHS = ["/", "/search", "/cart", "/profile", "/orders"];
 
@@ -54,6 +56,8 @@ function AppInner() {
         <Route path="/orders" element={<Orders />} />
         <Route path="/product/:id" element={<ProductDetail />} />
         <Route path="/order-tracking/:id" element={<OrderTracking />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/contact-support" element={<ContactSupport />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       {showBottomNav && <BottomNav />}

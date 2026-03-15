@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { IoHome, IoGrid, IoCart, IoReceipt, IoPerson, IoClose, IoLogOut, IoLogIn } from "react-icons/io5";
+import { IoHome, IoGrid, IoCart, IoReceipt, IoPerson, IoClose, IoLogOut, IoLogIn, IoSettings, IoHelpCircle } from "react-icons/io5";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 
@@ -17,6 +17,11 @@ const NAV_ITEMS = [
   { path: "/profile", label: "Profile", Icon: IoPerson },
 ];
 
+const BOTTOM_ITEMS = [
+  { path: "/settings", label: "Settings", Icon: IoSettings },
+  { path: "/contact-support", label: "Contact Support", Icon: IoHelpCircle },
+];
+
 export function DrawerMenu({ open, onClose }: Props) {
   const navigate = useNavigate();
   const { totalItems } = useCart();
@@ -27,9 +32,10 @@ export function DrawerMenu({ open, onClose }: Props) {
     return () => { document.body.style.overflow = ""; };
   }, [open]);
 
-  const handleNav = (path: string) => {
-    navigate(path);
+  const handleNav = (path: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     onClose();
+    setTimeout(() => navigate(path), 10);
   };
 
   const isSignedIn = !!user;
@@ -54,6 +60,7 @@ export function DrawerMenu({ open, onClose }: Props) {
       {/* Drawer panel */}
       <div
         className="relative flex flex-col"
+        onClick={(e) => e.stopPropagation()}
         style={{
           width: 280,
           height: "100%",
@@ -102,7 +109,7 @@ export function DrawerMenu({ open, onClose }: Props) {
             return (
               <button
                 key={path}
-                onClick={() => handleNav(path)}
+                onClick={(e) => handleNav(path, e)}
                 className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl mb-1 press-active"
                 style={{ transition: "background 0.15s" }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(228,161,43,0.07)")}
@@ -118,6 +125,22 @@ export function DrawerMenu({ open, onClose }: Props) {
               </button>
             );
           })}
+
+          <div style={{ height: 1, background: "rgba(228,161,43,0.08)", margin: "8px 0" }} />
+
+          {BOTTOM_ITEMS.map(({ path, label, Icon }) => (
+            <button
+              key={path}
+              onClick={(e) => handleNav(path, e)}
+              className="w-full flex items-center gap-4 px-4 py-3 rounded-xl mb-1 press-active"
+              style={{ transition: "background 0.15s" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            >
+              <Icon size={18} color="rgba(255,255,255,0.5)" />
+              <span className="font-inter text-sm font-medium flex-1 text-left" style={{ color: "rgba(255,255,255,0.6)" }}>{label}</span>
+            </button>
+          ))}
         </div>
 
         {/* Bottom action */}
@@ -133,11 +156,11 @@ export function DrawerMenu({ open, onClose }: Props) {
             </button>
           ) : (
             <button
-              onClick={() => { navigate("/auth/welcome"); onClose(); }}
+              onClick={(e) => { e.stopPropagation(); onClose(); setTimeout(() => navigate("/auth/welcome"), 10); }}
               className="w-full flex items-center justify-center gap-3 py-3 rounded-xl press-active gold-gradient"
             >
               <IoLogIn size={18} color="#09090C" />
-              <span className="font-inter text-sm font-bold text-background">Sign In</span>
+              <span className="font-inter text-sm font-bold" style={{ color: "#09090C" }}>Sign In</span>
             </button>
           )}
         </div>

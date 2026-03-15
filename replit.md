@@ -20,8 +20,8 @@ A premium liquor delivery app with two frontends: a React Native mobile app (Exp
 - **Build**: Vite 5 — `cd web && npm run build` produces `web/dist/`
 - **PWA**: `web/public/manifest.json` + icons — enables "Add to Home Screen" on mobile
 - **Workflow**: "Start Web App" — `cd web && npm install --legacy-peer-deps && node_modules/.bin/vite`
-- **Pages**: AgeGate → Welcome → Login/Signup/ForgotPassword → Home → Search → ProductDetail → Cart → Checkout → Profile → Orders → OrderTracking
-- **Components**: SplashScreen, BottomNav, DrawerMenu, ProductCard, GoldButton, ScreenBackground
+- **Pages**: AgeGate → Welcome → Login/Signup/ForgotPassword → Home → Search → ProductDetail → Cart → Checkout → Profile → Orders → OrderTracking → **Settings** → **ContactSupport**
+- **Components**: SplashScreen, BottomNav (5 tabs), DrawerMenu (Settings/Support links), ProductCard, GoldButton, ScreenBackground
 
 ## Design System
 

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { IoPerson, IoCreate, IoLogOut, IoLogIn, IoHome, IoCart, IoReceipt, IoClose, IoCheckmarkCircle } from "react-icons/io5";
+import { IoPerson, IoCreate, IoLogOut, IoLogIn, IoHome, IoCart, IoReceipt, IoClose, IoCheckmarkCircle, IoSettings, IoHelpCircle } from "react-icons/io5";
 import { useAuth } from "@/context/AuthContext";
 import { storage } from "@/lib/storage";
 
@@ -142,6 +142,8 @@ export function Profile() {
             { icon: <IoHome size={18} color="#E4A12B" />, label: "Browse Products", action: () => navigate("/") },
             { icon: <IoCart size={18} color="#E4A12B" />, label: "My Cart", action: () => navigate("/cart") },
             { icon: <IoReceipt size={18} color="#E4A12B" />, label: "My Orders", action: () => navigate("/orders") },
+            { icon: <IoSettings size={18} color="rgba(255,255,255,0.5)" />, label: "Settings", action: () => navigate("/settings") },
+            { icon: <IoHelpCircle size={18} color="rgba(255,255,255,0.5)" />, label: "Contact Support", action: () => navigate("/contact-support") },
           ].map(({ icon, label, action }, i, arr) => (
             <React.Fragment key={label}>
               <button onClick={action} className="w-full flex items-center gap-4 px-4 py-4 press-active">

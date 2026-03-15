@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { IoStar, IoAdd } from "react-icons/io5";
 import { Product } from "@/lib/supabase";
 import { useCart } from "@/context/CartContext";
+import { useAppSettings } from "@/context/AppSettingsContext";
 
 const BOTTLE_IMAGES: Record<string, string> = {
   whiskey: "/hennessy.png",
@@ -27,6 +28,8 @@ interface Props {
 export function ProductCard({ product, horizontal = false }: Props) {
   const navigate = useNavigate();
   const { addToCart } = useCart();
+  const { settings } = useAppSettings();
+  const currSym = settings?.currency_symbol ?? "$";
   const img = getProductImage(product);
   const outOfStock = product.stock_qty <= 0;
 
@@ -59,7 +62,7 @@ export function ProductCard({ product, horizontal = false }: Props) {
               <span className="font-inter text-white" style={{ fontSize: 10 }}>{product.rating?.toFixed(1)}</span>
             </div>
             <div className="flex items-center justify-between mt-2">
-              <span className="font-inter font-bold" style={{ fontSize: 14, color: "#E4A12B" }}>${product.price?.toFixed(2)}</span>
+              <span className="font-inter font-bold" style={{ fontSize: 14, color: "#E4A12B" }}>{currSym}{product.price?.toFixed(2)}</span>
               <button
                 onClick={(e) => { e.stopPropagation(); if (!outOfStock) addToCart(product); }}
                 disabled={outOfStock}
@@ -101,7 +104,7 @@ export function ProductCard({ product, horizontal = false }: Props) {
           </div>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <span className="font-inter font-bold" style={{ fontSize: 15, color: "#E4A12B" }}>${product.price?.toFixed(2)}</span>
+          <span className="font-inter font-bold" style={{ fontSize: 15, color: "#E4A12B" }}>{currSym}{product.price?.toFixed(2)}</span>
           <button
             onClick={(e) => { e.stopPropagation(); if (!outOfStock) addToCart(product); }}
             disabled={outOfStock}

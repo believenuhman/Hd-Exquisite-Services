@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { IoMenu, IoStar, IoChevronForward } from "react-icons/io5";
+import { IoMenu, IoChevronForward, IoSearch } from "react-icons/io5";
 import { supabase, Product } from "@/lib/supabase";
 import { useCart } from "@/context/CartContext";
-import { ProductCard, getProductImage } from "@/components/ProductCard";
+import { ProductCard } from "@/components/ProductCard";
 import { DrawerMenu } from "@/components/DrawerMenu";
 
 const CATEGORIES = ["All", "Whiskey", "Vodka", "Rum", "Wine", "Tequila", "Bourbon"];
@@ -21,9 +21,7 @@ export function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState("All");
-  const [search, setSearch] = useState("");
   const [heroIdx, setHeroIdx] = useState(0);
-  const heroRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     supabase.from("products").select("*").eq("is_active", true).order("created_at", { ascending: false })
@@ -73,12 +71,21 @@ export function Home() {
         </div>
 
         {/* Logo Hero */}
-        <div className="flex flex-col items-center py-6" style={{ background: "linear-gradient(180deg, rgba(13,11,20,1) 0%, rgba(9,9,12,0) 100%)" }}>
-          <img src="/logo.png" alt="HD XQUISITE" style={{ width: 240, height: 96, objectFit: "contain" }} />
+        <div className="flex flex-col items-center pt-6 pb-4" style={{ background: "linear-gradient(180deg, rgba(13,11,20,1) 0%, rgba(9,9,12,0) 100%)" }}>
+          <img src="/logo.png" alt="HD XQUISITE" style={{ width: 260, height: 104, objectFit: "contain" }} />
+          <p className="font-cormorant tracking-[5px] text-xs mt-1" style={{ color: "rgba(228,161,43,0.6)" }}>PREMIUM SPIRITS</p>
+        </div>
+
+        {/* Search bar directly below logo */}
+        <div className="mx-4 mb-4">
+          <button onClick={() => navigate("/search")} className="w-full flex items-center gap-3 rounded-2xl px-4 press-active" style={{ background: "#1A1A26", border: "1px solid rgba(228,161,43,0.2)", height: 48 }}>
+            <IoSearch size={18} color="rgba(228,161,43,0.6)" />
+            <span className="flex-1 text-left font-inter text-sm" style={{ color: "rgba(255,255,255,0.35)" }}>Search spirits, wines, cocktails...</span>
+          </button>
         </div>
 
         {/* Animated Hero Banner */}
-        <div className="mx-4 mb-5 rounded-3xl overflow-hidden relative" style={{ height: 180, background: "linear-gradient(135deg, #1C1828, #0D0B14)" }}>
+        <div className="mx-4 mb-5 rounded-3xl overflow-hidden relative" style={{ height: 175, background: "linear-gradient(135deg, #1C1828, #0D0B14)" }}>
           <div className="absolute inset-0 flex items-center justify-center">
             {HERO_BOTTLES.map((bottle, i) => (
               <div key={i} className="absolute inset-0 flex items-center justify-between px-6 transition-all duration-500"
@@ -91,7 +98,7 @@ export function Home() {
                     <IoChevronForward size={14} color="#C91E8C" />
                   </button>
                 </div>
-                <img src={bottle.src} alt={bottle.name} style={{ width: 100, height: 150, objectFit: "contain", filter: "drop-shadow(0 4px 16px rgba(0,0,0,0.6))" }} />
+                <img src={bottle.src} alt={bottle.name} style={{ width: 95, height: 145, objectFit: "contain", filter: "drop-shadow(0 4px 16px rgba(0,0,0,0.6))" }} />
               </div>
             ))}
           </div>
@@ -100,22 +107,6 @@ export function Home() {
             {HERO_BOTTLES.map((_, i) => (
               <div key={i} style={{ width: i === heroIdx ? 16 : 5, height: 5, borderRadius: 3, background: i === heroIdx ? "#E4A12B" : "rgba(255,255,255,0.25)", transition: "all 0.3s" }} />
             ))}
-          </div>
-        </div>
-
-        {/* Search bar */}
-        <div className="mx-4 mb-4">
-          <div className="flex items-center gap-3 rounded-2xl px-4" style={{ background: "#1A1A26", border: "1px solid rgba(228,161,43,0.2)", height: 48 }}>
-            <span style={{ fontSize: 18 }}>🔍</span>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onFocus={() => navigate("/search")}
-              placeholder="Search spirits, wines, cocktails..."
-              className="flex-1 bg-transparent font-inter text-white text-sm"
-              style={{ color: "white" }}
-              readOnly
-            />
           </div>
         </div>
 

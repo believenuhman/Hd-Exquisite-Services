@@ -2,11 +2,14 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { IoTrash, IoAdd, IoRemove } from "react-icons/io5";
 import { useCart } from "@/context/CartContext";
+import { useAppSettings } from "@/context/AppSettingsContext";
 import { getProductImage } from "@/components/ProductCard";
 
 export function Cart() {
   const navigate = useNavigate();
   const { items, removeFromCart, updateQuantity, subtotal, clearCart, totalItems } = useCart();
+  const { settings } = useAppSettings();
+  const currSym = settings?.currency_symbol ?? "$";
 
   return (
     <div className="fixed inset-0 flex flex-col" style={{ background: "#09090C" }}>
@@ -48,7 +51,7 @@ export function Cart() {
                   <div className="flex-1 min-w-0">
                     <p className="font-inter font-semibold text-white text-sm truncate">{product.name}</p>
                     <p className="font-inter text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{product.category}</p>
-                    <p className="font-inter font-bold text-sm mt-1" style={{ color: "#E4A12B" }}>${(product.price * quantity).toFixed(2)}</p>
+                    <p className="font-inter font-bold text-sm mt-1" style={{ color: "#E4A12B" }}>{currSym}{(product.price * quantity).toFixed(2)}</p>
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     <button onClick={() => removeFromCart(product.id)} className="press-active">
@@ -75,7 +78,7 @@ export function Cart() {
           <div className="flex-shrink-0 px-4 pb-4 pt-2" style={{ borderTop: "1px solid rgba(228,161,43,0.1)", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 80px)" }}>
             <div className="flex justify-between items-center mb-2">
               <span className="font-inter text-sm" style={{ color: "rgba(255,255,255,0.55)" }}>Subtotal ({totalItems} item{totalItems !== 1 ? "s" : ""})</span>
-              <span className="font-inter font-bold text-white">${subtotal.toFixed(2)}</span>
+              <span className="font-inter font-bold text-white">{currSym}{subtotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between items-center mb-4">
               <span className="font-inter text-sm" style={{ color: "rgba(255,255,255,0.55)" }}>Delivery</span>
@@ -83,7 +86,7 @@ export function Cart() {
             </div>
             <button onClick={() => navigate("/checkout")} className="w-full py-4 rounded-2xl font-inter font-bold text-sm tracking-wide press-active"
               style={{ background: "linear-gradient(135deg, #D4901A, #F5C842)", color: "#09090C" }}>
-              Checkout → ${subtotal.toFixed(2)}
+              Checkout → {currSym}{subtotal.toFixed(2)}
             </button>
           </div>
         </>
