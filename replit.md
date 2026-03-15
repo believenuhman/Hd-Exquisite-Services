@@ -50,6 +50,28 @@ Root Stack → Tabs (Home, Search, Cart[badge], Profile) + Product Detail (slide
 - `assets/images/icon.png` / `splash-icon.png` — Gold sphere app icon
 - `assets/images/hennessy.png`, `donjulio.png`, `johnniewalker.png`, `rum.png`, `vodka.png`, `wine.png` — AI-generated product bottle images
 
+## Android APK Build (EAS)
+
+- **EAS CLI**: `eas-cli@18.3.0` installed (local `node_modules/.bin/eas`)
+- **Android package**: `com.hdxquisiteliquors.app`
+- **iOS bundle ID**: `com.hdxquisiteliquors.app`
+- **App slug**: `hd-xquisite-liquors`
+- **Deep-link scheme**: `hdxquisiteliquors`
+- **eas.json profiles**:
+  - `preview` → `buildType: apk` (sideload/test APK, `distribution: internal`)
+  - `production` → `buildType: app-bundle` (Play Store AAB)
+  - `development` → development client build
+
+### To build an APK
+```bash
+# Log in to your Expo account first (one-time)
+npx eas login
+
+# Then kick off the APK build
+npx eas build -p android --profile preview
+```
+EAS will queue a cloud build and return a download URL for the `.apk` when done.
+
 ## Products (data/products.ts)
 
 1. Hennessy VS — $42.99 (Cognac, featured)
