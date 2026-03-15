@@ -90,6 +90,7 @@
     "minimatch": ">=3.1.4",
     "semver": ">=7.5.2",
     "serialize-javascript": ">=7.0.3",
-    "tar": ">=7.5.3"
+    "tar": ">=7.5.3",
+    "@expo/multipart-body-parser": "2.0.0"
   }
 }
