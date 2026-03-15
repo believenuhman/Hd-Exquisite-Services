@@ -131,3 +131,48 @@ insert into products (name, category, price, rating, description, is_trending, i
   ('Belvedere Pure', 'Vodka', 39.99, 4.6, 'Made from 100% Polska rye and purified water from its own artesian wells. Four times distilled and never filtered — full flavored, ultra-smooth.', false, true, 60),
   ('Opus One 2019', 'Wine', 349.99, 5.0, 'A Napa Valley icon. The 2019 vintage delivers an opulent red with notes of black currant, dark cherry, and violet — structured and enduring.', true, true, 10)
   on conflict do nothing;
+
+-- User Profiles (stores extra auth metadata for signed-in users)
+-- Run this in your Supabase SQL Editor after enabling Auth
+create table if not exists profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  full_name text,
+  phone text,
+  delivery_address text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Row Level Security: users can only see/edit their own profile
+alter table profiles enable row level security;
+
+create policy "Users can view own profile"
+  on profiles for select
+  using (auth.uid() = id);
+
+create policy "Users can insert own profile"
+  on profiles for insert
+  with check (auth.uid() = id);
+
+create policy "Users can update own profile"
+  on profiles for update
+  using (auth.uid() = id);
+
+-- Auto-create profile on signup via trigger
+create or replace function handle_new_user()
+returns trigger as $$
+begin
+  insert into public.profiles (id, full_name, phone)
+  values (
+    new.id,
+    new.raw_user_meta_data->>'full_name',
+    new.raw_user_meta_data->>'phone'
+  );
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure handle_new_user();

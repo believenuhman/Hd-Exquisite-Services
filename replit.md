@@ -50,6 +50,18 @@ Root Stack → Tabs (Home, Search, Cart[badge], Profile) + Product Detail (slide
 - `assets/images/icon.png` / `splash-icon.png` — Gold sphere app icon
 - `assets/images/hennessy.png`, `donjulio.png`, `johnniewalker.png`, `rum.png`, `vodka.png`, `wine.png` — AI-generated product bottle images
 
+## Authentication (Supabase Auth)
+
+- **AuthProvider**: `context/AuthContext.tsx` — provides `user`, `session`, `isGuest`, `loading`, `signIn`, `signUp`, `signOut`, `continueAsGuest`
+- **Session persistence**: `lib/supabase.ts` uses AsyncStorage with `storageKey: "hd-xquisite-mobile-auth"` so sessions survive app restarts
+- **AuthGuard** in `app/_layout.tsx`: redirects unauthenticated/non-guest users to `/auth/welcome`; redirects signed-in users away from auth screens
+- **Flow**: Age gate → Auth welcome → Log In / Sign Up / Guest → Main app
+- **Guest access**: Full app access; profile shows Guest badge + CTA to create account
+- **Signed-in**: Profile shows name from `user.user_metadata.full_name`, email, Premium Member badge, Sign Out
+- **Auth screens**: `app/auth/` (welcome, login, signup, forgot-password)
+- **Profiles table**: SQL in `supabase-schema.sql` — run in Supabase SQL Editor to auto-create profiles on signup via trigger
+- **Extra user fields**: `full_name` + `phone` stored in Supabase `user_metadata` on sign up
+
 ## Android APK Build (EAS)
 
 - **EAS CLI**: `eas-cli@18.3.0` installed (local `node_modules/.bin/eas`)

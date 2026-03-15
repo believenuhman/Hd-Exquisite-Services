@@ -9,6 +9,7 @@ import {
   TextInput,
   RefreshControl,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -19,6 +20,7 @@ import { Colors } from "@/constants/colors";
 import { ScreenBackground } from "@/components/ScreenBackground";
 import { supabase, Order } from "@/lib/supabase";
 import { useAppSettings } from "@/context/AppSettingsContext";
+import { useAuth } from "@/context/AuthContext";
 
 const ADDR_KEY = "hd_saved_address";
 const PHONE_KEY = "hd_saved_phone";
@@ -35,34 +37,49 @@ const STATUS_COLORS: Record<string, string> = {
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { formatPrice } = useAppSettings();
+  const { user, isGuest, signOut } = useAuth();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
+  const isSignedIn = !!user;
+
+  const [name, setName] = useState(
+    user?.user_metadata?.full_name ?? ""
+  );
+  const [phone, setPhone] = useState(
+    user?.user_metadata?.phone ?? ""
+  );
   const [address, setAddress] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    Promise.all([
-      AsyncStorage.getItem(NAME_KEY),
-      AsyncStorage.getItem(PHONE_KEY),
-      AsyncStorage.getItem(ADDR_KEY),
-    ]).then(([n, p, a]) => {
-      if (n) setName(n);
-      if (p) setPhone(p);
-      if (a) setAddress(a);
-    });
-  }, []);
+    if (isSignedIn) {
+      AsyncStorage.getItem(ADDR_KEY).then((a) => { if (a) setAddress(a); });
+    } else {
+      Promise.all([
+        AsyncStorage.getItem(NAME_KEY),
+        AsyncStorage.getItem(PHONE_KEY),
+        AsyncStorage.getItem(ADDR_KEY),
+      ]).then(([n, p, a]) => {
+        if (n) setName(n);
+        if (p) setPhone(p);
+        if (a) setAddress(a);
+      });
+    }
+  }, [isSignedIn]);
 
   const fetchOrders = useCallback(async () => {
-    const savedPhone = await AsyncStorage.getItem(PHONE_KEY);
-    if (!savedPhone) {
+    const lookupPhone = isSignedIn
+      ? user?.user_metadata?.phone
+      : await AsyncStorage.getItem(PHONE_KEY);
+
+    if (!lookupPhone) {
       setOrdersLoading(false);
       setRefreshing(false);
       return;
@@ -72,7 +89,7 @@ export default function ProfileScreen() {
       const { data } = await supabase
         .from("orders")
         .select("*")
-        .eq("customer_phone", savedPhone)
+        .eq("customer_phone", lookupPhone)
         .order("created_at", { ascending: false })
         .limit(10);
       if (data) setOrders(data as Order[]);
@@ -82,7 +99,7 @@ export default function ProfileScreen() {
       setOrdersLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [isSignedIn, user]);
 
   useEffect(() => {
     fetchOrders();
@@ -99,6 +116,31 @@ export default function ProfileScreen() {
     setEditMode(false);
     fetchOrders();
   };
+
+  const handleSignOut = () => {
+    Alert.alert(
+      "Sign Out",
+      "Are you sure you want to sign out?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign Out",
+          style: "destructive",
+          onPress: async () => {
+            setSigningOut(true);
+            await signOut();
+            setSigningOut(false);
+          },
+        },
+      ]
+    );
+  };
+
+  const displayName = isSignedIn
+    ? user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Member"
+    : name || "Guest";
+
+  const displayEmail = user?.email ?? null;
 
   return (
     <ScreenBackground>
@@ -123,41 +165,117 @@ export default function ProfileScreen() {
         <View style={styles.heroSection}>
           <View style={styles.avatarRing}>
             <LinearGradient
-              colors={[Colors.goldStart, Colors.goldEnd]}
+              colors={
+                isSignedIn
+                  ? [Colors.goldStart, Colors.goldEnd]
+                  : ["rgba(180,180,190,0.3)", "rgba(120,120,130,0.2)"]
+              }
               style={styles.avatarGrad}
             >
-              <Ionicons name="person" size={36} color="#0B0B0F" />
+              <Ionicons
+                name="person"
+                size={36}
+                color={isSignedIn ? "#0B0B0F" : "rgba(185,185,195,0.6)"}
+              />
             </LinearGradient>
           </View>
-          <Text style={styles.heroName}>{name || "Guest Member"}</Text>
-          <View style={styles.memberBadge}>
-            <Ionicons name="diamond-outline" size={12} color={Colors.goldAccent} />
-            <Text style={styles.memberBadgeText}>Premium Member</Text>
-          </View>
-          <Text style={styles.ordersCount}>{orders.length} Orders Placed</Text>
+          <Text style={styles.heroName}>{displayName}</Text>
+
+          {isSignedIn ? (
+            <>
+              {displayEmail && (
+                <Text style={styles.heroEmail}>{displayEmail}</Text>
+              )}
+              <View style={styles.memberBadge}>
+                <Ionicons
+                  name="diamond-outline"
+                  size={12}
+                  color={Colors.goldAccent}
+                />
+                <Text style={styles.memberBadgeText}>Premium Member</Text>
+              </View>
+              <Text style={styles.ordersCount}>
+                {orders.length} Orders Placed
+              </Text>
+            </>
+          ) : (
+            <View style={styles.guestBadge}>
+              <Ionicons
+                name="person-outline"
+                size={12}
+                color={Colors.textSecondary}
+              />
+              <Text style={styles.guestBadgeText}>Guest</Text>
+            </View>
+          )}
         </View>
+
+        {/* Guest CTA Banner */}
+        {!isSignedIn && (
+          <Pressable
+            style={styles.guestCtaBanner}
+            onPress={() => router.push("/auth/welcome")}
+          >
+            <LinearGradient
+              colors={["rgba(201,30,140,0.12)", "rgba(228,161,43,0.10)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.guestCtaGrad}
+            >
+              <View style={styles.guestCtaLeft}>
+                <Ionicons
+                  name="lock-open-outline"
+                  size={22}
+                  color={Colors.goldAccent}
+                />
+                <View>
+                  <Text style={styles.guestCtaTitle}>
+                    Create a Free Account
+                  </Text>
+                  <Text style={styles.guestCtaSub}>
+                    Track orders, save preferences & more
+                  </Text>
+                </View>
+              </View>
+              <Ionicons
+                name="chevron-forward"
+                size={18}
+                color={Colors.goldAccent}
+              />
+            </LinearGradient>
+          </Pressable>
+        )}
 
         {/* Profile Info */}
         <View style={styles.cardSection}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>My Profile</Text>
-            <Pressable
-              onPress={() => setEditMode(!editMode)}
-              style={styles.editBtn}
-            >
-              <Ionicons
-                name={editMode ? "close" : "pencil-outline"}
-                size={16}
-                color={Colors.goldAccent}
-              />
-              <Text style={styles.editBtnText}>{editMode ? "Cancel" : "Edit"}</Text>
-            </Pressable>
+            {!isSignedIn && (
+              <Pressable
+                onPress={() => setEditMode(!editMode)}
+                style={styles.editBtn}
+              >
+                <Ionicons
+                  name={editMode ? "close" : "pencil-outline"}
+                  size={16}
+                  color={Colors.goldAccent}
+                />
+                <Text style={styles.editBtnText}>
+                  {editMode ? "Cancel" : "Edit"}
+                </Text>
+              </Pressable>
+            )}
           </View>
 
           <View style={styles.infoCard}>
+            {/* Name row */}
             <View style={styles.infoRow}>
-              <Ionicons name="person-outline" size={18} color={Colors.goldAccent} />
-              {editMode ? (
+              <Ionicons
+                name="person-outline"
+                size={18}
+                color={Colors.goldAccent}
+              />
+              {!isSignedIn && editMode ? (
                 <TextInput
                   style={styles.infoInput}
                   value={name}
@@ -166,13 +284,35 @@ export default function ProfileScreen() {
                   placeholderTextColor="rgba(185,185,195,0.4)"
                 />
               ) : (
-                <Text style={styles.infoText}>{name || "Not set"}</Text>
+                <Text style={styles.infoText}>{displayName}</Text>
               )}
             </View>
+
             <View style={styles.rowDivider} />
+
+            {/* Email row (signed-in only) */}
+            {isSignedIn && displayEmail && (
+              <>
+                <View style={styles.infoRow}>
+                  <Ionicons
+                    name="mail-outline"
+                    size={18}
+                    color={Colors.goldAccent}
+                  />
+                  <Text style={styles.infoText}>{displayEmail}</Text>
+                </View>
+                <View style={styles.rowDivider} />
+              </>
+            )}
+
+            {/* Phone row */}
             <View style={styles.infoRow}>
-              <Ionicons name="call-outline" size={18} color={Colors.goldAccent} />
-              {editMode ? (
+              <Ionicons
+                name="call-outline"
+                size={18}
+                color={Colors.goldAccent}
+              />
+              {!isSignedIn && editMode ? (
                 <TextInput
                   style={styles.infoInput}
                   value={phone}
@@ -182,21 +322,43 @@ export default function ProfileScreen() {
                   keyboardType="phone-pad"
                 />
               ) : (
-                <Text style={styles.infoText}>{phone || "Not set"}</Text>
+                <Text style={styles.infoText}>
+                  {isSignedIn
+                    ? user?.user_metadata?.phone || "Not set"
+                    : phone || "Not set"}
+                </Text>
               )}
             </View>
+
             <View style={styles.rowDivider} />
+
+            {/* Address row */}
             <View style={styles.infoRow}>
-              <Ionicons name="location-outline" size={18} color={Colors.goldAccent} />
-              {editMode ? (
-                <TextInput
-                  style={[styles.infoInput, styles.infoInputFlex]}
-                  value={address}
-                  onChangeText={setAddress}
-                  placeholder="Delivery address"
-                  placeholderTextColor="rgba(185,185,195,0.4)"
-                  multiline
-                />
+              <Ionicons
+                name="location-outline"
+                size={18}
+                color={Colors.goldAccent}
+              />
+              {editMode || isSignedIn ? (
+                editMode ? (
+                  <TextInput
+                    style={[styles.infoInput, styles.infoInputFlex]}
+                    value={address}
+                    onChangeText={setAddress}
+                    placeholder="Delivery address"
+                    placeholderTextColor="rgba(185,185,195,0.4)"
+                    multiline
+                  />
+                ) : (
+                  <TextInput
+                    style={[styles.infoInput, styles.infoInputFlex]}
+                    value={address}
+                    onChangeText={setAddress}
+                    placeholder="Add delivery address"
+                    placeholderTextColor="rgba(185,185,195,0.4)"
+                    multiline
+                  />
+                )
               ) : (
                 <Text style={[styles.infoText, styles.infoInputFlex]}>
                   {address || "Not set"}
@@ -205,8 +367,12 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {editMode && (
-            <Pressable onPress={handleSave} disabled={saving} style={styles.saveBtn}>
+          {(editMode || isSignedIn) && (
+            <Pressable
+              onPress={handleSave}
+              disabled={saving}
+              style={styles.saveBtn}
+            >
               <LinearGradient
                 colors={[Colors.goldStart, Colors.goldEnd]}
                 start={{ x: 0, y: 0 }}
@@ -214,7 +380,7 @@ export default function ProfileScreen() {
                 style={styles.saveGrad}
               >
                 <Text style={styles.saveBtnText}>
-                  {saving ? "Saving…" : "Save Profile"}
+                  {saving ? "Saving…" : "Save Address"}
                 </Text>
               </LinearGradient>
             </Pressable>
@@ -224,12 +390,19 @@ export default function ProfileScreen() {
         {/* Order History */}
         <View style={styles.cardSection}>
           <Text style={styles.cardTitle}>Order History</Text>
-          {!phone ? (
+
+          {!isSignedIn && !phone ? (
             <View style={styles.emptyState}>
-              <Ionicons name="bag-outline" size={32} color="rgba(185,185,195,0.3)" />
+              <Ionicons
+                name="bag-outline"
+                size={32}
+                color="rgba(185,185,195,0.3)"
+              />
               <Text style={styles.emptyTitle}>No orders yet</Text>
               <Text style={styles.emptyText}>
-                Add your phone number above to see your order history.
+                {isGuest
+                  ? "Create an account to view your full order history."
+                  : "Add your phone number above to see your order history."}
               </Text>
             </View>
           ) : ordersLoading ? (
@@ -239,7 +412,11 @@ export default function ProfileScreen() {
             />
           ) : orders.length === 0 ? (
             <View style={styles.emptyState}>
-              <Ionicons name="bag-outline" size={32} color="rgba(185,185,195,0.3)" />
+              <Ionicons
+                name="bag-outline"
+                size={32}
+                color="rgba(185,185,195,0.3)"
+              />
               <Text style={styles.emptyTitle}>No orders yet</Text>
               <Text style={styles.emptyText}>
                 Place your first order and it will appear here.
@@ -274,7 +451,10 @@ export default function ProfileScreen() {
                     <Text
                       style={[
                         styles.statusText,
-                        { color: STATUS_COLORS[o.status] ?? Colors.goldAccent },
+                        {
+                          color:
+                            STATUS_COLORS[o.status] ?? Colors.goldAccent,
+                        },
                       ]}
                     >
                       {o.status.replace(/_/g, " ")}
@@ -285,7 +465,9 @@ export default function ProfileScreen() {
                   <Text style={styles.orderDate}>
                     {new Date(o.created_at).toLocaleDateString()}
                   </Text>
-                  <Text style={styles.orderTotal}>{formatPrice(o.total)}</Text>
+                  <Text style={styles.orderTotal}>
+                    {formatPrice(o.total)}
+                  </Text>
                 </View>
                 <Ionicons
                   name="chevron-forward"
@@ -306,19 +488,79 @@ export default function ProfileScreen() {
               style={styles.menuItem}
               onPress={() => router.push("/(tabs)/search")}
             >
-              <Ionicons name="search-outline" size={20} color={Colors.goldAccent} />
+              <Ionicons
+                name="search-outline"
+                size={20}
+                color={Colors.goldAccent}
+              />
               <Text style={styles.menuLabel}>Browse Products</Text>
-              <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color={Colors.textSecondary}
+              />
             </Pressable>
             <View style={styles.rowDivider} />
             <Pressable
               style={styles.menuItem}
               onPress={() => router.push("/(tabs)/cart")}
             >
-              <Ionicons name="bag-outline" size={20} color={Colors.goldAccent} />
+              <Ionicons
+                name="bag-outline"
+                size={20}
+                color={Colors.goldAccent}
+              />
               <Text style={styles.menuLabel}>My Cart</Text>
-              <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color={Colors.textSecondary}
+              />
             </Pressable>
+
+            {!isSignedIn && (
+              <>
+                <View style={styles.rowDivider} />
+                <Pressable
+                  style={styles.menuItem}
+                  onPress={() => router.push("/auth/welcome")}
+                >
+                  <Ionicons
+                    name="person-add-outline"
+                    size={20}
+                    color={Colors.magenta}
+                  />
+                  <Text style={[styles.menuLabel, { color: Colors.magenta }]}>
+                    Sign In / Create Account
+                  </Text>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={16}
+                    color={Colors.magenta}
+                  />
+                </Pressable>
+              </>
+            )}
+
+            {isSignedIn && (
+              <>
+                <View style={styles.rowDivider} />
+                <Pressable
+                  style={styles.menuItem}
+                  onPress={handleSignOut}
+                  disabled={signingOut}
+                >
+                  <Ionicons
+                    name="log-out-outline"
+                    size={20}
+                    color={Colors.danger}
+                  />
+                  <Text style={[styles.menuLabel, { color: Colors.danger }]}>
+                    {signingOut ? "Signing Out…" : "Sign Out"}
+                  </Text>
+                </Pressable>
+              </>
+            )}
           </View>
         </View>
 
@@ -330,7 +572,7 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 20 },
-  heroSection: { alignItems: "center", marginBottom: 28 },
+  heroSection: { alignItems: "center", marginBottom: 20 },
   avatarRing: {
     width: 88,
     height: 88,
@@ -349,7 +591,13 @@ const styles = StyleSheet.create({
     fontFamily: "PlayfairDisplay_700Bold",
     fontSize: 22,
     color: Colors.textPrimary,
-    marginBottom: 6,
+    marginBottom: 4,
+  },
+  heroEmail: {
+    fontFamily: "CormorantGaramond_400Regular",
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginBottom: 8,
   },
   memberBadge: {
     flexDirection: "row",
@@ -369,9 +617,57 @@ const styles = StyleSheet.create({
     color: Colors.goldAccent,
     letterSpacing: 1,
   },
+  guestBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(185,185,195,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(185,185,195,0.15)",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginBottom: 8,
+  },
+  guestBadgeText: {
+    fontFamily: "CormorantGaramond_600SemiBold",
+    fontSize: 12,
+    color: Colors.textSecondary,
+    letterSpacing: 1,
+  },
   ordersCount: {
     fontFamily: "CormorantGaramond_400Regular",
     fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  guestCtaBanner: {
+    marginBottom: 24,
+    borderRadius: 16,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(201,30,140,0.3)",
+  },
+  guestCtaGrad: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 16,
+  },
+  guestCtaLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    flex: 1,
+  },
+  guestCtaTitle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+    color: Colors.textPrimary,
+    marginBottom: 2,
+  },
+  guestCtaSub: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
     color: Colors.textSecondary,
   },
   cardSection: { marginBottom: 24 },
@@ -476,7 +772,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.goldAccent,
   },
-  orderChevron: { position: "absolute", right: 12, top: "50%", marginTop: -7 },
+  orderChevron: {
+    position: "absolute",
+    right: 12,
+    top: "50%",
+    marginTop: -7,
+  },
   menuItem: {
     flexDirection: "row",
     alignItems: "center",

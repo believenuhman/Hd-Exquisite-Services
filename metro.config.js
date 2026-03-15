@@ -9,6 +9,8 @@ const defaultBlockList = config.resolver.blockList
 config.resolver.blockList = [
   ...defaultBlockList,
   /\.local\/skills\/.*/,
+  /\.local\/state\/.*/,
+  /\.local\/tasks\/.*/,
 ];
 
 module.exports = config;
