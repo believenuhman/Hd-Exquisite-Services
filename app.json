@@ -4,6 +4,10 @@
       "eas": {
         "projectId": "92b2241c-b2a8-4e99-9261-818f958c038d"
       }
+    },
+    "icon": "./assets/images/icon.png",
+    "web": {
+      "favicon": "./assets/images/favicon.png"
     }
   }
 }
