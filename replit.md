@@ -1,27 +1,55 @@
 # HD Xquisite Liquors
 
-A premium liquor delivery app with two frontends: a React Native mobile app (Expo) and a mobile-first web app (React + Vite) built for Median web wrapping.
+A premium liquor delivery web app (React + Vite + Tailwind) built for Median web wrapping. Expo has been removed — the Vite web app is the primary app.
 
 ## Architecture
 
-- **Mobile App (Expo)**: Expo Router (file-based routing), React Native — port 8081
-- **Web App (Vite)**: React + Vite + Tailwind CSS, mobile-first design — port 5173 (`web/`)
-- **Backend**: Express.js on port 5000
+- **Web App (Vite)**: React + Vite + Tailwind CSS, mobile-first design — port 5000 (`web/`) — PRIMARY APP
+- **Backend (Express)**: Payment API + static file serving — port 3000 (dev), PORT env var (prod)
 - **Database**: Supabase (PostgreSQL)
-- **Auth**: Supabase Auth with AsyncStorage (mobile) / localStorage (web) session persistence
+- **Auth**: Supabase Auth with localStorage session persistence
 - **State**: React Context (CartContext, AuthContext, AgeGateContext, AppSettingsContext)
-- **Fonts**: PlayfairDisplay (headings/900) + CormorantGaramond (body) + Inter (UI/product cards)
+- **Fonts**: PlayfairDisplay (headings) + CormorantGaramond (body) + Inter (UI/product cards)
+- **Payments**: Stub/mock provider by default; Stripe ready (set STRIPE_SECRET_KEY to activate)
 
 ## Web App (`web/`)
 
 - **Entry**: `web/src/main.tsx` — max-width 480px mobile-first layout
-- **Router**: React Router DOM v6 (hash-based)
+- **Router**: React Router DOM v6
 - **Styling**: Tailwind CSS with custom font/color tokens + inline `index.css` animations
 - **Build**: Vite 5 — `cd web && npm run build` produces `web/dist/`
 - **PWA**: `web/public/manifest.json` + icons — enables "Add to Home Screen" on mobile
-- **Workflow**: "Start Web App" — `cd web && npm install --legacy-peer-deps && node_modules/.bin/vite`
-- **Pages**: AgeGate → Welcome → Login/Signup/ForgotPassword → Home → Search → ProductDetail → Cart → Checkout → Profile → Orders → OrderTracking → **Settings** → **ContactSupport**
-- **Components**: SplashScreen, BottomNav (5 tabs), DrawerMenu (Settings/Support links), ProductCard, GoldButton, ScreenBackground
+- **Workflows**: "Start Web App" (port 5000, webview) + "Start Backend" (port 3000, console)
+- **Pages**: AgeGate → Welcome → Login/Signup/ForgotPassword → Home → Search → ProductDetail → Cart → Checkout → Profile → Orders → OrderTracking → Settings → ContactSupport → **PaymentMock** → **PaymentSuccess** → **PaymentFailed** → **PaymentCancelled**
+- **Components**: SplashScreen, BottomNav (5 tabs), DrawerMenu, ProductCard
+
+## Payment System
+
+- **Architecture**: Frontend never stores secret keys. Backend (`server/payment.ts`) handles all payment logic.
+- **Default mode**: Mock provider — shows a test payment form at `/payment/mock/:orderId`
+- **Stripe mode**: Auto-activates when `STRIPE_SECRET_KEY` env var is set
+- **API routes** (Express, port 3000 dev / PORT prod):
+  - `POST /api/payment/create-session` — creates payment session, returns hosted URL
+  - `POST /api/payment/verify` — verifies payment and updates Supabase order status
+  - `POST /api/payment/webhook` — Stripe webhook handler
+  - `GET /api/health` — health check
+- **Vite proxy**: `/api/*` → `http://localhost:3000` in development
+- **Payment flow**: Cash on Delivery (direct) | Pay Online (session → hosted page → success/failed/cancelled)
+- **Order fields added**: `payment_method`, `payment_status`, `payment_reference`, `gateway_name`, `paid_at`
+- **DB Migration**: Run `supabase-payment-migration.sql` in Supabase SQL Editor
+
+## Environment Variables (Secrets)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `EXPO_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anonymous key |
+| `STRIPE_SECRET_KEY` | No* | Activates real Stripe payments (replaces mock) |
+| `STRIPE_WEBHOOK_SECRET` | No* | Required for Stripe webhook validation |
+| `SUPABASE_SERVICE_ROLE_KEY` | No* | Allows backend to update order status securely |
+| `PAYMENT_GATEWAY` | No | Set to "stripe" to force Stripe mode |
+
+*Optional for mock mode; required for real Stripe integration
 
 ## Design System
 

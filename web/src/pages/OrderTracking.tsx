@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { IoChevronBack, IoHome, IoCheckmarkCircle, IoTime, IoAlertCircle } from "react-icons/io5";
+import { IoChevronBack, IoHome, IoCheckmarkCircle, IoTime, IoAlertCircle, IoCard, IoCash } from "react-icons/io5";
 import { supabase, Order, OrderItem } from "@/lib/supabase";
 
 const STEPS: { key: Order["status"]; label: string; sub: string; icon: string }[] = [
@@ -70,6 +70,29 @@ export function OrderTracking() {
           <p className="font-inter text-xs mt-2" style={{ color: "rgba(255,255,255,0.35)" }}>
             {new Date(order.created_at).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
           </p>
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            {/* Payment method badge */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: order.payment_method === "online_card" ? "rgba(201,30,140,0.12)" : "rgba(228,161,43,0.1)", border: `1px solid ${order.payment_method === "online_card" ? "rgba(201,30,140,0.3)" : "rgba(228,161,43,0.25)"}` }}>
+              {order.payment_method === "online_card"
+                ? <IoCard size={11} color="#C91E8C" />
+                : <IoCash size={11} color="#E4A12B" />}
+              <span className="font-inter text-xs font-semibold" style={{ color: order.payment_method === "online_card" ? "#C91E8C" : "#E4A12B" }}>
+                {order.payment_method === "online_card" ? "Paid Online" : "Cash on Delivery"}
+              </span>
+            </div>
+            {/* Payment status badge */}
+            {order.payment_status && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{
+                background: order.payment_status === "paid" ? "rgba(76,175,80,0.1)" : order.payment_status === "failed" ? "rgba(220,53,69,0.1)" : "rgba(255,255,255,0.05)",
+                border: `1px solid ${order.payment_status === "paid" ? "rgba(76,175,80,0.3)" : order.payment_status === "failed" ? "rgba(220,53,69,0.3)" : "rgba(255,255,255,0.12)"}`,
+              }}>
+                <div style={{ width: 6, height: 6, borderRadius: "50%", background: order.payment_status === "paid" ? "#4CAF50" : order.payment_status === "failed" ? "#DC3545" : "rgba(255,255,255,0.3)" }} />
+                <span className="font-inter text-xs font-semibold capitalize" style={{ color: order.payment_status === "paid" ? "#4CAF50" : order.payment_status === "failed" ? "#DC3545" : "rgba(255,255,255,0.4)" }}>
+                  {order.payment_status === "paid" ? "Paid" : order.payment_status === "failed" ? "Payment Failed" : order.payment_status === "pending" ? "Awaiting Payment" : order.payment_status}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Refused state */}

@@ -20,6 +20,10 @@ import { ProductDetail } from "@/pages/ProductDetail";
 import { OrderTracking } from "@/pages/OrderTracking";
 import { Settings } from "@/pages/Settings";
 import { ContactSupport } from "@/pages/ContactSupport";
+import { PaymentMock } from "@/pages/PaymentMock";
+import { PaymentSuccess } from "@/pages/PaymentSuccess";
+import { PaymentFailed } from "@/pages/PaymentFailed";
+import { PaymentCancelled } from "@/pages/PaymentCancelled";
 
 const TAB_PATHS = ["/", "/search", "/cart", "/profile", "/orders"];
 
@@ -58,6 +62,10 @@ function AppInner() {
         <Route path="/order-tracking/:id" element={<OrderTracking />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/contact-support" element={<ContactSupport />} />
+        <Route path="/payment/success" element={<PaymentSuccess />} />
+        <Route path="/payment/failed" element={<PaymentFailed />} />
+        <Route path="/payment/cancelled" element={<PaymentCancelled />} />
+        <Route path="/payment/mock/:orderId" element={<PaymentMock />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       {showBottomNav && <BottomNav />}

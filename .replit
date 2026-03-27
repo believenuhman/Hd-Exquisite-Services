@@ -5,8 +5,8 @@ modules = ["nodejs-22"]
 channel = "stable-24_05"
 
 [deployment]
-deploymentTarget = "static"
-build = ["sh", "-c", "cd web && npm install --legacy-peer-deps && node_modules/.bin/vite build"]
+deploymentTarget = "autoscale"
+build = ["sh", "-c", "cd web && npm install --legacy-peer-deps && node_modules/.bin/vite build && npm run server:build"]
 run = ["npm", "run", "server:prod"]
 publicDir = "web/dist"
 
@@ -52,6 +52,10 @@ args = "Start App"
 task = "workflow.run"
 args = "Start Web App"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start Backend"
+
 [[workflows.workflow]]
 name = "Start App"
 author = "agent"
@@ -76,3 +80,15 @@ outputType = "webview"
 task = "shell.exec"
 args = "cd web && npm install --legacy-peer-deps && node_modules/.bin/vite"
 waitForPort = 5000
+
+[[workflows.workflow]]
+name = "Start Backend"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "sh -c 'npm run server:build && PORT=3000 node server_dist/index.js'"
+waitForPort = 3000
