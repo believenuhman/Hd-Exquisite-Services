@@ -5,18 +5,66 @@ import express from "express";
 import { createServer } from "node:http";
 
 // server/payment.ts
+import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
-var GATEWAY = process.env.PAYMENT_GATEWAY ?? "mock";
+var GATEWAY = process.env.PAYMENT_GATEWAY ?? "wipay";
 var STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? "";
 var STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET ?? "";
 var SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "";
 var SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
+var WIPAY_ACCOUNT_NUMBER = process.env.WIPAY_ACCOUNT_NUMBER ?? "1";
+var WIPAY_API_KEY = process.env.WIPAY_API_KEY ?? "123";
+var WIPAY_COUNTRY_CODE = (process.env.WIPAY_COUNTRY_CODE ?? "TT").toUpperCase();
+var WIPAY_ENVIRONMENT = process.env.WIPAY_ENVIRONMENT ?? "sandbox";
+var WIPAY_FEE_STRUCTURE = process.env.WIPAY_FEE_STRUCTURE ?? "customer_pay";
 function getSupabaseAdmin() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) throw new Error("Supabase credentials not configured");
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 }
 function isStripeMode() {
   return (GATEWAY === "stripe" || Boolean(STRIPE_SECRET_KEY)) && Boolean(STRIPE_SECRET_KEY);
+}
+function isWiPayMode() {
+  return GATEWAY === "wipay";
+}
+function getWiPayEndpoint() {
+  switch (WIPAY_COUNTRY_CODE) {
+    case "BB":
+      return "https://bb.wipayfinancial.com/plugins/payments/request";
+    case "JM":
+      return "https://jm.wipayfinancial.com/plugins/payments/request";
+    default:
+      return "https://tt.wipayfinancial.com/plugins/payments/request";
+  }
+}
+function verifyWiPayHash(transactionId, total, hash) {
+  const expected = createHash("md5").update(`${transactionId}${total}${WIPAY_API_KEY}`).digest("hex");
+  return expected === hash;
+}
+async function createWiPaySession(req) {
+  const total = Number(req.amount).toFixed(2);
+  const origin = new URL(req.successUrl).origin;
+  const responseUrl = `${origin}/api/payment/wipay/return/${req.orderId}`;
+  const endpoint = getWiPayEndpoint();
+  const formParams = {
+    account_number: WIPAY_ACCOUNT_NUMBER,
+    country_code: WIPAY_COUNTRY_CODE,
+    currency: req.currency.toUpperCase(),
+    environment: WIPAY_ENVIRONMENT,
+    fee_structure: WIPAY_FEE_STRUCTURE,
+    method: "credit_card",
+    total,
+    order_id: req.orderId,
+    origin: "HD_Xquisite_Liquors",
+    response_url: responseUrl
+  };
+  console.log("[wipay] Preparing browser-POST form:", endpoint, { orderId: req.orderId, total, environment: WIPAY_ENVIRONMENT });
+  return {
+    url: endpoint,
+    reference: `wipay_pending_${req.orderId}`,
+    gateway: "wipay",
+    formParams
+  };
 }
 async function createStripeSession(req) {
   const Stripe = (await import("stripe")).default;
@@ -55,6 +103,9 @@ async function createMockSession(req) {
   };
 }
 async function createPaymentSession(req) {
+  if (isWiPayMode()) {
+    return createWiPaySession(req);
+  }
   if (isStripeMode()) {
     return createStripeSession(req);
   }
@@ -76,6 +127,16 @@ async function verifyPayment(orderId, reference, gateway) {
       await updateOrderPaid(orderId, ref, "stripe");
     }
     return { success: true, paid, reference: ref, gateway: "stripe" };
+  }
+  if (gateway === "wipay") {
+    try {
+      const supabase = getSupabaseAdmin();
+      const { data: order } = await supabase.from("orders").select("payment_status, payment_reference").eq("id", orderId).single();
+      const paid = order?.payment_status === "paid";
+      return { success: true, paid, reference: order?.payment_reference ?? reference, gateway: "wipay" };
+    } catch {
+      return { success: true, paid: true, reference, gateway: "wipay" };
+    }
   }
   if (gateway === "mock" || reference.startsWith("mock_")) {
     await updateOrderPaid(orderId, reference, "mock");
@@ -136,6 +197,38 @@ async function handleStripeWebhook(rawBody, signature) {
 }
 
 // server/routes.ts
+async function handleWiPayReturn(orderId, params, req, res) {
+  const { status, hash, transaction_id: transactionId, reasonDescription } = params;
+  console.log("[wipay return]", { orderId, status, transactionId, hash, reasonDescription });
+  const proto = req.headers["x-forwarded-proto"] ?? req.protocol ?? "https";
+  const host = req.headers["x-forwarded-host"] ?? req.headers.host ?? "localhost";
+  const frontendOrigin = `${proto}://${host}`;
+  if (!orderId) {
+    return res.redirect(`${frontendOrigin}/payment/failed?reason=missing_order`);
+  }
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data: order } = await supabase.from("orders").select("total").eq("id", orderId).single();
+    const total = order ? Number(order.total).toFixed(2) : "0.00";
+    const hashValid = transactionId && hash ? verifyWiPayHash(transactionId, total, hash) : false;
+    console.log("[wipay return] hash check:", { total, hashValid });
+    if (status === "success" && hashValid) {
+      await updateOrderPaid(orderId, transactionId, "wipay");
+      return res.redirect(
+        `${frontendOrigin}/payment/success?orderId=${encodeURIComponent(orderId)}&ref=${encodeURIComponent(transactionId)}&gateway=wipay`
+      );
+    } else {
+      await updateOrderFailed(orderId);
+      const reason = encodeURIComponent(
+        reasonDescription || (hashValid ? "Payment failed" : "Invalid payment response")
+      );
+      return res.redirect(`${frontendOrigin}/payment/failed?orderId=${encodeURIComponent(orderId)}&reason=${reason}`);
+    }
+  } catch (err) {
+    console.error("[wipay return] Error:", err);
+    return res.redirect(`${frontendOrigin}/payment/failed?orderId=${encodeURIComponent(orderId)}&reason=server_error`);
+  }
+}
 async function registerRoutes(app2) {
   app2.post("/api/payment/create-session", async (req, res) => {
     try {
@@ -153,7 +246,7 @@ async function registerRoutes(app2) {
         successUrl,
         cancelUrl
       });
-      return res.json({ url: session.url, reference: session.reference, gateway: session.gateway });
+      return res.json({ url: session.url, reference: session.reference, gateway: session.gateway, formParams: session.formParams });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Payment session creation failed";
       console.error("[/api/payment/create-session]", err);
@@ -173,6 +266,16 @@ async function registerRoutes(app2) {
       console.error("[/api/payment/verify]", err);
       return res.status(500).json({ error: message });
     }
+  });
+  app2.get("/api/payment/wipay/return/:orderId", async (req, res) => {
+    const orderId = req.params.orderId ?? "";
+    const params = req.query;
+    return handleWiPayReturn(orderId, params, req, res);
+  });
+  app2.post("/api/payment/wipay/return/:orderId", async (req, res) => {
+    const orderId = req.params.orderId ?? "";
+    const params = { ...req.query, ...req.body };
+    return handleWiPayReturn(orderId, params, req, res);
   });
   app2.post("/api/payment/webhook", async (req, res) => {
     try {

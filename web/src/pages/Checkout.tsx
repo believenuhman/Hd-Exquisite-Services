@@ -110,7 +110,13 @@ export function Checkout() {
         }),
       });
 
-      const data = await response.json() as { url?: string; reference?: string; gateway?: string; error?: string };
+      const data = await response.json() as {
+        url?: string;
+        reference?: string;
+        gateway?: string;
+        formParams?: Record<string, string>;
+        error?: string;
+      };
 
       if (!response.ok || !data.url) {
         await supabase.from("orders").update({ payment_status: "failed" }).eq("id", order.id);
@@ -127,6 +133,25 @@ export function Checkout() {
 
       clearCart();
       setLoading(false);
+
+      // WiPay requires a browser-side form POST (not a simple redirect)
+      if (data.gateway === "wipay" && data.formParams) {
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = data.url;
+        form.style.display = "none";
+        for (const [key, value] of Object.entries(data.formParams)) {
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = key;
+          input.value = value;
+          form.appendChild(input);
+        }
+        document.body.appendChild(form);
+        form.submit();
+        return;
+      }
+
       window.location.href = data.url;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Something went wrong. Please try again.";
@@ -269,7 +294,7 @@ export function Checkout() {
                   <p className="font-inter text-sm font-semibold" style={{ color: paymentMethod === "online_card" ? "#fff" : "rgba(255,255,255,0.6)" }}>Pay Online</p>
                   <span className="font-inter text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: "linear-gradient(135deg, #C91E8C, #9B15A0)", color: "#fff", fontSize: 9 }}>SECURE</span>
                 </div>
-                <p className="font-inter text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>Credit / Debit card via secure checkout</p>
+                <p className="font-inter text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>Credit / Debit card via WiPay Caribbean</p>
               </div>
               <div className="flex-shrink-0 rounded-full" style={{ width: 18, height: 18, border: `2px solid ${paymentMethod === "online_card" ? "#C91E8C" : "rgba(255,255,255,0.2)"}`, background: paymentMethod === "online_card" ? "#C91E8C" : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {paymentMethod === "online_card" && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#fff" }} />}
@@ -281,7 +306,7 @@ export function Checkout() {
             <div className="mt-3 flex items-start gap-2 p-3 rounded-xl" style={{ background: "rgba(201,30,140,0.06)", border: "1px solid rgba(201,30,140,0.2)" }}>
               <span className="text-sm" style={{ marginTop: 1 }}>🔒</span>
               <p className="font-inter text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
-                You will be redirected to a secure hosted payment page. Your card details are never stored by us.
+                You will be redirected to WiPay Caribbean's secure hosted payment page. Your card details are never stored by us.
               </p>
             </div>
           )}

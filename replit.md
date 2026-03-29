@@ -10,7 +10,7 @@ A premium liquor delivery web app (React + Vite + Tailwind) built for Median web
 - **Auth**: Supabase Auth with localStorage session persistence
 - **State**: React Context (CartContext, AuthContext, AgeGateContext, AppSettingsContext)
 - **Fonts**: PlayfairDisplay (headings) + CormorantGaramond (body) + Inter (UI/product cards)
-- **Payments**: Stub/mock provider by default; Stripe ready (set STRIPE_SECRET_KEY to activate)
+- **Payments**: WiPay Caribbean (active default); Stripe ready (set STRIPE_SECRET_KEY to activate); Mock fallback
 
 ## Web App (`web/`)
 
@@ -26,16 +26,24 @@ A premium liquor delivery web app (React + Vite + Tailwind) built for Median web
 ## Payment System
 
 - **Architecture**: Frontend never stores secret keys. Backend (`server/payment.ts`) handles all payment logic.
-- **Default mode**: Mock provider — shows a test payment form at `/payment/mock/:orderId`
+- **Active gateway**: WiPay Caribbean (`PAYMENT_GATEWAY=wipay`) — browser-side form POST to WiPay hosted checkout
+- **WiPay flow**:
+  1. Backend builds form params (account_number, currency, total, response_url, etc.)
+  2. Frontend auto-submits hidden form directly to `https://[country].wipayfinancial.com/plugins/payments/request`
+  3. WiPay handles card entry on their hosted page
+  4. WiPay redirects to `/api/payment/wipay/return/:orderId`
+  5. Backend verifies MD5 hash, updates Supabase, redirects to `/payment/success` or `/payment/failed`
+- **WiPay sandbox**: Default test credentials (account_number=1, api_key=123). For live, set `WIPAY_ACCOUNT_NUMBER` + `WIPAY_API_KEY` secrets and change `WIPAY_ENVIRONMENT=live`
 - **Stripe mode**: Auto-activates when `STRIPE_SECRET_KEY` env var is set
 - **API routes** (Express, port 3000 dev / PORT prod):
-  - `POST /api/payment/create-session` — creates payment session, returns hosted URL
-  - `POST /api/payment/verify` — verifies payment and updates Supabase order status
+  - `POST /api/payment/create-session` — builds WiPay/Stripe session, returns url + formParams
+  - `POST /api/payment/verify` — verifies payment status in Supabase
+  - `GET|POST /api/payment/wipay/return/:orderId` — WiPay return handler (hash verification + DB update)
   - `POST /api/payment/webhook` — Stripe webhook handler
   - `GET /api/health` — health check
 - **Vite proxy**: `/api/*` → `http://localhost:3000` in development
-- **Payment flow**: Cash on Delivery (direct) | Pay Online (session → hosted page → success/failed/cancelled)
-- **Order fields added**: `payment_method`, `payment_status`, `payment_reference`, `gateway_name`, `paid_at`
+- **Payment flow**: Cash on Delivery (direct) | Pay Online (WiPay form-POST → hosted page → success/failed)
+- **Order fields**: `payment_method`, `payment_status`, `payment_reference`, `gateway_name`, `paid_at`
 - **DB Migration**: Run `supabase-payment-migration.sql` in Supabase SQL Editor
 
 ## Environment Variables (Secrets)
@@ -44,12 +52,17 @@ A premium liquor delivery web app (React + Vite + Tailwind) built for Median web
 |----------|----------|-------------|
 | `EXPO_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
 | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anonymous key |
-| `STRIPE_SECRET_KEY` | No* | Activates real Stripe payments (replaces mock) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Recommended | Secure backend order updates |
+| `PAYMENT_GATEWAY` | No | "wipay" (default), "stripe", or "mock" |
+| `WIPAY_ACCOUNT_NUMBER` | No* | WiPay merchant account number (default: "1" test) |
+| `WIPAY_API_KEY` | No* | WiPay API key for hash verification (default: "123" test) |
+| `WIPAY_COUNTRY_CODE` | No | "TT" (default), "BB", or "JM" |
+| `WIPAY_ENVIRONMENT` | No | "sandbox" (default) or "live" |
+| `WIPAY_FEE_STRUCTURE` | No | "customer_pay" (default), "merchant_pay", or "split" |
+| `STRIPE_SECRET_KEY` | No* | Activates Stripe mode |
 | `STRIPE_WEBHOOK_SECRET` | No* | Required for Stripe webhook validation |
-| `SUPABASE_SERVICE_ROLE_KEY` | No* | Allows backend to update order status securely |
-| `PAYMENT_GATEWAY` | No | Set to "stripe" to force Stripe mode |
 
-*Optional for mock mode; required for real Stripe integration
+*Required for live/production payments
 
 ## Design System
 

@@ -1,6 +1,63 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
-import { createPaymentSession, verifyPayment, handleStripeWebhook } from "./payment";
+import {
+  createPaymentSession,
+  verifyPayment,
+  handleStripeWebhook,
+  verifyWiPayHash,
+  updateOrderPaid,
+  updateOrderFailed,
+  getSupabaseAdmin,
+} from "./payment";
+
+async function handleWiPayReturn(
+  orderId: string,
+  params: Record<string, string>,
+  req: Request,
+  res: Response,
+) {
+  const { status, hash, transaction_id: transactionId, reasonDescription } = params;
+
+  console.log("[wipay return]", { orderId, status, transactionId, hash, reasonDescription });
+
+  const proto = (req.headers["x-forwarded-proto"] as string) ?? req.protocol ?? "https";
+  const host = (req.headers["x-forwarded-host"] as string) ?? req.headers.host ?? "localhost";
+  const frontendOrigin = `${proto}://${host}`;
+
+  if (!orderId) {
+    return res.redirect(`${frontendOrigin}/payment/failed?reason=missing_order`);
+  }
+
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data: order } = await supabase
+      .from("orders")
+      .select("total")
+      .eq("id", orderId)
+      .single();
+
+    const total = order ? Number(order.total).toFixed(2) : "0.00";
+    const hashValid = transactionId && hash ? verifyWiPayHash(transactionId, total, hash) : false;
+
+    console.log("[wipay return] hash check:", { total, hashValid });
+
+    if (status === "success" && hashValid) {
+      await updateOrderPaid(orderId, transactionId, "wipay");
+      return res.redirect(
+        `${frontendOrigin}/payment/success?orderId=${encodeURIComponent(orderId)}&ref=${encodeURIComponent(transactionId)}&gateway=wipay`,
+      );
+    } else {
+      await updateOrderFailed(orderId);
+      const reason = encodeURIComponent(
+        reasonDescription || (hashValid ? "Payment failed" : "Invalid payment response"),
+      );
+      return res.redirect(`${frontendOrigin}/payment/failed?orderId=${encodeURIComponent(orderId)}&reason=${reason}`);
+    }
+  } catch (err) {
+    console.error("[wipay return] Error:", err);
+    return res.redirect(`${frontendOrigin}/payment/failed?orderId=${encodeURIComponent(orderId)}&reason=server_error`);
+  }
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
 
@@ -30,7 +87,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         cancelUrl,
       });
 
-      return res.json({ url: session.url, reference: session.reference, gateway: session.gateway });
+      return res.json({ url: session.url, reference: session.reference, gateway: session.gateway, formParams: session.formParams });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Payment session creation failed";
       console.error("[/api/payment/create-session]", err);
@@ -57,6 +114,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("[/api/payment/verify]", err);
       return res.status(500).json({ error: message });
     }
+  });
+
+  // WiPay return handler — GET redirect (WiPay appends query params to response_url)
+  app.get("/api/payment/wipay/return/:orderId", async (req: Request, res: Response) => {
+    const orderId = req.params.orderId ?? "";
+    const params = req.query as Record<string, string>;
+    return handleWiPayReturn(orderId, params, req, res);
+  });
+
+  // WiPay return handler — POST fallback (some WiPay configurations POST)
+  app.post("/api/payment/wipay/return/:orderId", async (req: Request, res: Response) => {
+    const orderId = req.params.orderId ?? "";
+    const params = { ...req.query, ...req.body } as Record<string, string>;
+    return handleWiPayReturn(orderId, params, req, res);
   });
 
   app.post("/api/payment/webhook", async (req: Request, res: Response) => {

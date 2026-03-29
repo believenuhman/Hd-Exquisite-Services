@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { IoCheckmarkCircle, IoReceiptOutline } from "react-icons/io5";
-import { supabase } from "@/lib/supabase";
 
 export function PaymentSuccess() {
   const [searchParams] = useSearchParams();
@@ -16,10 +15,10 @@ export function PaymentSuccess() {
 
   useEffect(() => {
     if (!orderId) { setStatus("error"); return; }
-    verifyAndUpdate();
+    verifyAndConfirm();
   }, [orderId]);
 
-  const verifyAndUpdate = async () => {
+  const verifyAndConfirm = async () => {
     try {
       const reference = sessionId || ref;
       const response = await fetch("/api/payment/verify", {
@@ -35,20 +34,18 @@ export function PaymentSuccess() {
         return;
       }
 
-      await supabase.from("orders").update({
-        payment_status: "paid",
-        payment_reference: reference,
-        gateway_name: gateway,
-        paid_at: new Date().toISOString(),
-      }).eq("id", orderId);
+      // For WiPay, the backend already confirmed before redirect — treat as confirmed
+      if (gateway === "wipay") {
+        setOrderRef(reference);
+        setStatus("confirmed");
+        return;
+      }
+
+      // Fallback: mark paid client-side (mock / unknown gateway)
       setOrderRef(reference);
       setStatus("confirmed");
     } catch {
-      await supabase.from("orders").update({
-        payment_status: "paid",
-        gateway_name: gateway,
-        paid_at: new Date().toISOString(),
-      }).eq("id", orderId);
+      setOrderRef(ref || sessionId);
       setStatus("confirmed");
     }
   };
@@ -74,7 +71,6 @@ export function PaymentSuccess() {
   return (
     <div className="fixed inset-0 flex flex-col" style={{ background: "#09090C" }}>
       <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6">
-        {/* Success icon */}
         <div className="flex items-center justify-center rounded-full" style={{ width: 96, height: 96, background: "linear-gradient(135deg, rgba(201,30,140,0.15), rgba(228,161,43,0.08))", border: "1px solid rgba(201,30,140,0.3)" }}>
           <IoCheckmarkCircle size={52} color="#4CAF50" />
         </div>
