@@ -7,6 +7,9 @@ import { useAppSettings } from "@/context/AppSettingsContext";
 import { useAuth } from "@/context/AuthContext";
 import { storage } from "@/lib/storage";
 
+const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/test_28E7sK0Hwdf643lgUGbMQ00";
+const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
+
 type PaymentMethod = "cash_on_delivery" | "online_card";
 
 export function Checkout() {
@@ -46,12 +49,12 @@ export function Checkout() {
     return null;
   };
 
-  const createOrder = async () => {
+  const createOrder = async (method: PaymentMethod) => {
     const { data: order, error: orderErr } = await supabase.from("orders").insert({
-      customer_name: name,
-      customer_phone: phone,
-      delivery_address: address,
-      delivery_notes: notes || null,
+      customer_name: name.trim(),
+      customer_phone: phone.trim(),
+      delivery_address: address.trim(),
+      delivery_notes: notes.trim() || null,
       age_confirmed: true,
       status: "received",
       subtotal,
@@ -60,8 +63,9 @@ export function Checkout() {
       currency_code: currencyCode,
       currency_symbol: sym,
       zone_id: selectedZone?.id ?? null,
-      payment_method: paymentMethod,
-      payment_status: paymentMethod === "cash_on_delivery" ? "pending" : "pending",
+      payment_method: method,
+      payment_status: "pending",
+      gateway_name: method === "online_card" ? "stripe" : null,
     }).select().single();
 
     if (orderErr) throw new Error("Failed to create order: " + orderErr.message);
@@ -88,7 +92,7 @@ export function Checkout() {
     storage.set("hd_saved_address", address.trim());
 
     try {
-      const order = await createOrder();
+      const order = await createOrder(paymentMethod);
 
       if (paymentMethod === "cash_on_delivery") {
         clearCart();
@@ -97,62 +101,15 @@ export function Checkout() {
         return;
       }
 
-      const origin = window.location.origin;
-      const response = await fetch("/api/payment/create-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId: order.id,
-          amount: total,
-          currency: currencyCode,
-          description: `HD Xquisite Liquors — Order #${order.id.slice(0, 8).toUpperCase()}`,
-          origin,
-        }),
-      });
-
-      const data = await response.json() as {
-        url?: string;
-        reference?: string;
-        gateway?: string;
-        formParams?: Record<string, string>;
-        error?: string;
-      };
-
-      if (!response.ok || !data.url) {
-        await supabase.from("orders").update({ payment_status: "failed" }).eq("id", order.id);
-        setLoading(false);
-        return setError(data.error ?? "Could not start payment. Please try again.");
-      }
-
-      if (data.reference) {
-        await supabase.from("orders").update({
-          payment_reference: data.reference,
-          gateway_name: data.gateway ?? "unknown",
-        }).eq("id", order.id);
-      }
+      // Online payment via Stripe payment link
+      // Save the pending order ID so we can update it after Stripe returns
+      localStorage.setItem(PENDING_ORDER_KEY, order.id);
 
       clearCart();
       setLoading(false);
 
-      // WiPay requires a browser-side form POST (not a simple redirect)
-      if (data.gateway === "wipay" && data.formParams) {
-        const form = document.createElement("form");
-        form.method = "POST";
-        form.action = data.url;
-        form.style.display = "none";
-        for (const [key, value] of Object.entries(data.formParams)) {
-          const input = document.createElement("input");
-          input.type = "hidden";
-          input.name = key;
-          input.value = value;
-          form.appendChild(input);
-        }
-        document.body.appendChild(form);
-        form.submit();
-        return;
-      }
-
-      window.location.href = data.url;
+      // Redirect to Stripe payment link
+      window.location.href = STRIPE_PAYMENT_LINK;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Something went wrong. Please try again.";
       setLoading(false);
@@ -294,7 +251,7 @@ export function Checkout() {
                   <p className="font-inter text-sm font-semibold" style={{ color: paymentMethod === "online_card" ? "#fff" : "rgba(255,255,255,0.6)" }}>Pay Online</p>
                   <span className="font-inter text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: "linear-gradient(135deg, #C91E8C, #9B15A0)", color: "#fff", fontSize: 9 }}>SECURE</span>
                 </div>
-                <p className="font-inter text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>Credit / Debit card via WiPay Caribbean</p>
+                <p className="font-inter text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>Credit / Debit card via Stripe</p>
               </div>
               <div className="flex-shrink-0 rounded-full" style={{ width: 18, height: 18, border: `2px solid ${paymentMethod === "online_card" ? "#C91E8C" : "rgba(255,255,255,0.2)"}`, background: paymentMethod === "online_card" ? "#C91E8C" : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {paymentMethod === "online_card" && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#fff" }} />}
@@ -306,7 +263,7 @@ export function Checkout() {
             <div className="mt-3 flex items-start gap-2 p-3 rounded-xl" style={{ background: "rgba(201,30,140,0.06)", border: "1px solid rgba(201,30,140,0.2)" }}>
               <span className="text-sm" style={{ marginTop: 1 }}>🔒</span>
               <p className="font-inter text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
-                You will be redirected to WiPay Caribbean's secure hosted payment page. Your card details are never stored by us.
+                You'll be redirected to Stripe's secure hosted page. Your card details are never stored by us.
               </p>
             </div>
           )}
@@ -325,7 +282,7 @@ export function Checkout() {
             color: paymentMethod === "online_card" ? "#fff" : "#09090C",
           }}>
           {loading
-            ? (paymentMethod === "online_card" ? "Creating Secure Session..." : "Placing Order...")
+            ? (paymentMethod === "online_card" ? "Saving Order..." : "Placing Order...")
             : paymentMethod === "online_card"
             ? `PAY ONLINE · ${sym}${total.toFixed(2)}`
             : `PLACE ORDER · ${sym}${total.toFixed(2)}`}

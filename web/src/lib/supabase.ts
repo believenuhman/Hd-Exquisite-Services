@@ -60,7 +60,7 @@ export type Order = {
   refusal_reason: string | null;
   created_at: string;
   payment_method: "cash_on_delivery" | "online_card" | null;
-  payment_status: "pending" | "paid" | "failed" | "refunded" | null;
+  payment_status: "pending" | "paid" | "failed" | "cancelled" | "refunded" | null;
   payment_reference: string | null;
   gateway_name: string | null;
   paid_at: string | null;

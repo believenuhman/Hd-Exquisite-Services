@@ -19,7 +19,7 @@ ALTER TABLE orders
   DROP CONSTRAINT IF EXISTS orders_payment_status_check;
 ALTER TABLE orders
   ADD CONSTRAINT orders_payment_status_check
-  CHECK (payment_status IN ('pending', 'paid', 'failed', 'refunded'));
+  CHECK (payment_status IN ('pending', 'paid', 'failed', 'cancelled', 'refunded'));
 
 -- Backfill existing cash orders
 UPDATE orders

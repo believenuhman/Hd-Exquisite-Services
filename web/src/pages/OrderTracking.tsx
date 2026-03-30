@@ -1,16 +1,46 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { IoChevronBack, IoHome, IoCheckmarkCircle, IoTime, IoAlertCircle, IoCard, IoCash } from "react-icons/io5";
+import {
+  IoChevronBack, IoHome, IoCheckmarkCircle, IoAlertCircle,
+  IoCard, IoCash, IoRefresh, IoTime,
+} from "react-icons/io5";
 import { supabase, Order, OrderItem } from "@/lib/supabase";
 
+const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/test_28E7sK0Hwdf643lgUGbMQ00";
+
 const STEPS: { key: Order["status"]; label: string; sub: string; icon: string }[] = [
-  { key: "received", label: "Order Received", sub: "We got your order", icon: "📋" },
-  { key: "packing", label: "Packing", sub: "Your order is being packed", icon: "📦" },
-  { key: "out_for_delivery", label: "Out for Delivery", sub: "Driver on the way", icon: "🚗" },
-  { key: "delivered", label: "Delivered", sub: "Enjoy your order!", icon: "🎉" },
+  { key: "received",         label: "Order Received",     sub: "We got your order",       icon: "📋" },
+  { key: "packing",          label: "Packing",            sub: "Your order is being packed", icon: "📦" },
+  { key: "out_for_delivery", label: "Out for Delivery",   sub: "Driver on the way",        icon: "🚗" },
+  { key: "delivered",        label: "Delivered",          sub: "Enjoy your order!",        icon: "🎉" },
 ];
 
-const ORDER_IDX: Record<string, number> = { received: 0, packing: 1, out_for_delivery: 2, delivered: 3, refused: -1 };
+const ORDER_IDX: Record<string, number> = {
+  received: 0, packing: 1, out_for_delivery: 2, delivered: 3, refused: -1,
+};
+
+type PaymentStatus = Order["payment_status"];
+
+function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
+  if (!status) return null;
+
+  const config: Record<string, { label: string; color: string; bg: string; border: string; dot: string }> = {
+    paid:      { label: "Paid",              color: "#4CAF50", bg: "rgba(76,175,80,0.1)",   border: "rgba(76,175,80,0.3)",   dot: "#4CAF50" },
+    pending:   { label: "Awaiting Payment",  color: "#E4A12B", bg: "rgba(228,161,43,0.08)", border: "rgba(228,161,43,0.25)", dot: "#E4A12B" },
+    failed:    { label: "Payment Failed",    color: "#DC3545", bg: "rgba(220,53,69,0.1)",   border: "rgba(220,53,69,0.3)",   dot: "#DC3545" },
+    cancelled: { label: "Payment Cancelled", color: "rgba(255,255,255,0.45)", bg: "rgba(255,255,255,0.05)", border: "rgba(255,255,255,0.12)", dot: "rgba(255,255,255,0.3)" },
+    refunded:  { label: "Refunded",          color: "#9B59B6", bg: "rgba(155,89,182,0.1)",  border: "rgba(155,89,182,0.3)",  dot: "#9B59B6" },
+  };
+
+  const c = config[status] ?? config["pending"];
+
+  return (
+    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: c.bg, border: `1px solid ${c.border}` }}>
+      <div style={{ width: 6, height: 6, borderRadius: "50%", background: c.dot, flexShrink: 0 }} />
+      <span className="font-inter text-xs font-semibold" style={{ color: c.color }}>{c.label}</span>
+    </div>
+  );
+}
 
 export function OrderTracking() {
   const { id } = useParams<{ id: string }>();
@@ -19,8 +49,9 @@ export function OrderTracking() {
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const fetchOrder = () => {
     if (!id) return;
+    setLoading(true);
     Promise.all([
       supabase.from("orders").select("*").eq("id", id).single(),
       supabase.from("order_items").select("*").eq("order_id", id),
@@ -28,8 +59,10 @@ export function OrderTracking() {
       if (o) setOrder(o as Order);
       if (oi) setOrderItems(oi as OrderItem[]);
       setLoading(false);
-    });
-  }, [id]);
+    }).catch(() => setLoading(false));
+  };
+
+  useEffect(() => { fetchOrder(); }, [id]);
 
   if (loading) return (
     <div className="fixed inset-0 flex items-center justify-center" style={{ background: "#09090C" }}>
@@ -38,13 +71,24 @@ export function OrderTracking() {
   );
 
   if (!order) return (
-    <div className="fixed inset-0 flex items-center justify-center" style={{ background: "#09090C" }}>
+    <div className="fixed inset-0 flex flex-col items-center justify-center gap-4" style={{ background: "#09090C" }}>
       <p className="font-inter text-white">Order not found</p>
+      <button onClick={() => navigate("/")} className="px-6 py-3 rounded-2xl font-inter text-sm press-active"
+        style={{ background: "rgba(228,161,43,0.1)", border: "1px solid rgba(228,161,43,0.2)", color: "#E4A12B" }}>
+        Return to Home
+      </button>
     </div>
   );
 
   const currentIdx = ORDER_IDX[order.status] ?? 0;
   const isRefused = order.status === "refused";
+  const needsPayment = order.payment_method === "online_card" &&
+    (order.payment_status === "pending" || order.payment_status === "cancelled" || order.payment_status === "failed");
+
+  const handleRetryPayment = () => {
+    localStorage.setItem("hd_pending_payment_order_id", order.id);
+    window.location.href = STRIPE_PAYMENT_LINK;
+  };
 
   return (
     <div className="fixed inset-0 flex flex-col" style={{ background: "#09090C" }}>
@@ -63,15 +107,22 @@ export function OrderTracking() {
       </div>
 
       <div className="flex-1 overflow-y-auto no-scrollbar px-4 py-4 flex flex-col gap-4" style={{ paddingBottom: 80 }}>
-        {/* Order ID card */}
+
+        {/* Order ID + payment info */}
         <div className="rounded-2xl p-4" style={{ background: "linear-gradient(135deg, rgba(228,161,43,0.08), rgba(201,30,140,0.05))", border: "1px solid rgba(228,161,43,0.15)" }}>
-          <p className="font-inter text-xs mb-1" style={{ color: "rgba(255,255,255,0.4)" }}>Order ID</p>
-          <p className="font-inter font-bold text-white tracking-wider">#{order.id.toUpperCase()}</p>
-          <p className="font-inter text-xs mt-2" style={{ color: "rgba(255,255,255,0.35)" }}>
+          <div className="flex items-start justify-between mb-1">
+            <p className="font-inter text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>Order ID</p>
+            <button onClick={fetchOrder} className="press-active">
+              <IoRefresh size={14} color="rgba(255,255,255,0.25)" />
+            </button>
+          </div>
+          <p className="font-inter font-bold text-white tracking-wider">#{order.id.slice(0, 8).toUpperCase()}</p>
+          <p className="font-inter text-xs mt-1" style={{ color: "rgba(255,255,255,0.35)" }}>
             {new Date(order.created_at).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
           </p>
+
+          {/* Badges */}
           <div className="flex items-center gap-2 mt-3 flex-wrap">
-            {/* Payment method badge */}
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: order.payment_method === "online_card" ? "rgba(201,30,140,0.12)" : "rgba(228,161,43,0.1)", border: `1px solid ${order.payment_method === "online_card" ? "rgba(201,30,140,0.3)" : "rgba(228,161,43,0.25)"}` }}>
               {order.payment_method === "online_card"
                 ? <IoCard size={11} color="#C91E8C" />
@@ -80,20 +131,36 @@ export function OrderTracking() {
                 {order.payment_method === "online_card" ? "Paid Online" : "Cash on Delivery"}
               </span>
             </div>
-            {/* Payment status badge */}
-            {order.payment_status && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{
-                background: order.payment_status === "paid" ? "rgba(76,175,80,0.1)" : order.payment_status === "failed" ? "rgba(220,53,69,0.1)" : "rgba(255,255,255,0.05)",
-                border: `1px solid ${order.payment_status === "paid" ? "rgba(76,175,80,0.3)" : order.payment_status === "failed" ? "rgba(220,53,69,0.3)" : "rgba(255,255,255,0.12)"}`,
-              }}>
-                <div style={{ width: 6, height: 6, borderRadius: "50%", background: order.payment_status === "paid" ? "#4CAF50" : order.payment_status === "failed" ? "#DC3545" : "rgba(255,255,255,0.3)" }} />
-                <span className="font-inter text-xs font-semibold capitalize" style={{ color: order.payment_status === "paid" ? "#4CAF50" : order.payment_status === "failed" ? "#DC3545" : "rgba(255,255,255,0.4)" }}>
-                  {order.payment_status === "paid" ? "Paid" : order.payment_status === "failed" ? "Payment Failed" : order.payment_status === "pending" ? "Awaiting Payment" : order.payment_status}
-                </span>
-              </div>
-            )}
+            <PaymentStatusBadge status={order.payment_status} />
           </div>
+
+          {/* Paid timestamp */}
+          {order.paid_at && (
+            <p className="font-inter text-xs mt-2 flex items-center gap-1" style={{ color: "rgba(76,175,80,0.6)" }}>
+              <IoTime size={11} />
+              Paid {new Date(order.paid_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+            </p>
+          )}
         </div>
+
+        {/* Payment action banner — only shown when payment is outstanding */}
+        {needsPayment && (
+          <div className="rounded-2xl p-4" style={{ background: "rgba(201,30,140,0.08)", border: "1px solid rgba(201,30,140,0.25)" }}>
+            <p className="font-inter text-sm font-semibold text-white mb-1">
+              {order.payment_status === "failed" ? "Payment Failed" :
+               order.payment_status === "cancelled" ? "Payment Not Completed" :
+               "Awaiting Payment"}
+            </p>
+            <p className="font-inter text-xs mb-3" style={{ color: "rgba(255,255,255,0.45)" }}>
+              Complete your payment to confirm this order.
+            </p>
+            <button onClick={handleRetryPayment} className="w-full py-3 rounded-xl font-inter font-bold text-sm press-active flex items-center justify-center gap-2"
+              style={{ background: "linear-gradient(135deg, #C91E8C, #9B15A0)", color: "#fff" }}>
+              <IoRefresh size={16} />
+              {order.payment_status === "pending" ? "COMPLETE PAYMENT" : "RETRY PAYMENT"}
+            </button>
+          </div>
+        )}
 
         {/* Refused state */}
         {isRefused ? (
@@ -125,9 +192,11 @@ export function OrderTracking() {
                   <div className="pb-4">
                     <p className="font-inter text-sm font-semibold" style={{ color: done ? "#E4A12B" : "rgba(255,255,255,0.35)" }}>{step.label}</p>
                     <p className="font-inter text-xs mt-0.5" style={{ color: done ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.2)" }}>{step.sub}</p>
-                    {active && <div className="mt-1 px-2 py-0.5 rounded-full inline-block" style={{ background: "rgba(228,161,43,0.12)" }}>
-                      <span className="font-inter text-xs" style={{ color: "#E4A12B" }}>● Current</span>
-                    </div>}
+                    {active && (
+                      <div className="mt-1 px-2 py-0.5 rounded-full inline-block" style={{ background: "rgba(228,161,43,0.12)" }}>
+                        <span className="font-inter text-xs" style={{ color: "#E4A12B" }}>● Current</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -166,8 +235,8 @@ export function OrderTracking() {
         <div className="rounded-2xl p-4" style={{ background: "linear-gradient(145deg, #1C1828, #121212)", border: "1px solid rgba(228,161,43,0.1)" }}>
           <p className="font-inter font-semibold text-xs uppercase tracking-widest mb-3" style={{ color: "#E4A12B" }}>Delivery Info</p>
           {[
-            { label: "Name", value: order.customer_name },
-            { label: "Phone", value: order.customer_phone },
+            { label: "Name",    value: order.customer_name },
+            { label: "Phone",   value: order.customer_phone },
             { label: "Address", value: order.delivery_address },
           ].map(({ label, value }) => (
             <div key={label} className="flex justify-between py-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>

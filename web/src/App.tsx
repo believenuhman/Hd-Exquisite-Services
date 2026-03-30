@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAgeGate } from "@/context/AgeGateContext";
 import { useAuth } from "@/context/AuthContext";
@@ -62,9 +62,17 @@ function AppInner() {
         <Route path="/order-tracking/:id" element={<OrderTracking />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/contact-support" element={<ContactSupport />} />
-        <Route path="/payment/success" element={<PaymentSuccess />} />
-        <Route path="/payment/failed" element={<PaymentFailed />} />
-        <Route path="/payment/cancelled" element={<PaymentCancelled />} />
+
+        {/* Payment result screens — hyphen versions (Stripe redirects here) */}
+        <Route path="/payment-success" element={<PaymentSuccess />} />
+        <Route path="/payment-failed" element={<PaymentFailed />} />
+        <Route path="/payment-cancelled" element={<PaymentCancelled />} />
+
+        {/* Legacy slash versions — redirect to canonical hyphen routes */}
+        <Route path="/payment/success" element={<Navigate to="/payment-success" replace />} />
+        <Route path="/payment/failed" element={<Navigate to="/payment-failed" replace />} />
+        <Route path="/payment/cancelled" element={<Navigate to="/payment-cancelled" replace />} />
+
         <Route path="/payment/mock/:orderId" element={<PaymentMock />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

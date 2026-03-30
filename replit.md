@@ -10,7 +10,7 @@ A premium liquor delivery web app (React + Vite + Tailwind) built for Median web
 - **Auth**: Supabase Auth with localStorage session persistence
 - **State**: React Context (CartContext, AuthContext, AgeGateContext, AppSettingsContext)
 - **Fonts**: PlayfairDisplay (headings) + CormorantGaramond (body) + Inter (UI/product cards)
-- **Payments**: WiPay Caribbean (active default); Stripe ready (set STRIPE_SECRET_KEY to activate); Mock fallback
+- **Payments**: Stripe payment link (active); WiPay Caribbean code retained; Mock fallback available
 
 ## Web App (`web/`)
 
@@ -25,26 +25,25 @@ A premium liquor delivery web app (React + Vite + Tailwind) built for Median web
 
 ## Payment System
 
-- **Architecture**: Frontend never stores secret keys. Backend (`server/payment.ts`) handles all payment logic.
-- **Active gateway**: WiPay Caribbean (`PAYMENT_GATEWAY=wipay`) — browser-side form POST to WiPay hosted checkout
-- **WiPay flow**:
-  1. Backend builds form params (account_number, currency, total, response_url, etc.)
-  2. Frontend auto-submits hidden form directly to `https://[country].wipayfinancial.com/plugins/payments/request`
-  3. WiPay handles card entry on their hosted page
-  4. WiPay redirects to `/api/payment/wipay/return/:orderId`
-  5. Backend verifies MD5 hash, updates Supabase, redirects to `/payment/success` or `/payment/failed`
-- **WiPay sandbox**: Default test credentials (account_number=1, api_key=123). For live, set `WIPAY_ACCOUNT_NUMBER` + `WIPAY_API_KEY` secrets and change `WIPAY_ENVIRONMENT=live`
-- **Stripe mode**: Auto-activates when `STRIPE_SECRET_KEY` env var is set
-- **API routes** (Express, port 3000 dev / PORT prod):
-  - `POST /api/payment/create-session` — builds WiPay/Stripe session, returns url + formParams
-  - `POST /api/payment/verify` — verifies payment status in Supabase
-  - `GET|POST /api/payment/wipay/return/:orderId` — WiPay return handler (hash verification + DB update)
-  - `POST /api/payment/webhook` — Stripe webhook handler
-  - `GET /api/health` — health check
-- **Vite proxy**: `/api/*` → `http://localhost:3000` in development
-- **Payment flow**: Cash on Delivery (direct) | Pay Online (WiPay form-POST → hosted page → success/failed)
+- **Architecture**: Checkout saves order in Supabase before any redirect. No card data collected in-app.
+- **Active flow — Stripe payment link**:
+  1. User fills checkout form, selects "Pay Online"
+  2. Order created in Supabase: `payment_status=pending`, `payment_method=online_card`, `gateway_name=stripe`
+  3. Order ID saved to `localStorage["hd_pending_payment_order_id"]`
+  4. User redirected to `https://buy.stripe.com/test_28E7sK0Hwdf643lgUGbMQ00`
+  5. Stripe handles card entry on their hosted page
+  6. On success → redirected to `/payment-success` (updates order to `paid`, clears localStorage)
+  7. On cancel → redirected to `/payment-cancelled` (updates order to `cancelled`)
+  8. On failure → redirected to `/payment-failed` (updates order to `failed`)
+- **Stripe dashboard**: Configure the payment link's success URL to `https://<domain>/payment-success` and cancel URL to `https://<domain>/payment-cancelled`
+- **Retry flow**: Both failed and cancelled screens offer "Retry Payment" — re-opens Stripe link, order ID still in localStorage
+- **Cash on Delivery**: Order saved normally, `payment_status=pending`, navigates directly to order tracking
+- **Order tracking**: Shows payment status badge (Paid/Awaiting Payment/Payment Failed/Payment Cancelled/Refunded) + "Complete Payment" banner if outstanding
+- **Result routes**: `/payment-success`, `/payment-cancelled`, `/payment-failed` (canonical). Old `/payment/*` routes redirect to these.
 - **Order fields**: `payment_method`, `payment_status`, `payment_reference`, `gateway_name`, `paid_at`
-- **DB Migration**: Run `supabase-payment-migration.sql` in Supabase SQL Editor
+- **payment_status values**: `pending`, `paid`, `failed`, `cancelled`, `refunded`
+- **payment_method values**: `cash_on_delivery`, `online_card`
+- **DB Migration**: Run `supabase-payment-migration.sql` in Supabase SQL Editor (includes "cancelled" in constraint)
 
 ## Environment Variables (Secrets)
 
