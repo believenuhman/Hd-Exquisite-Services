@@ -119,27 +119,36 @@ Root Stack → Tabs (Home, Search, Cart[badge], Profile) + Product Detail (slide
 - **Profiles table**: SQL in `supabase-schema.sql` — run in Supabase SQL Editor to auto-create profiles on signup via trigger
 - **Extra user fields**: `full_name` + `phone` stored in Supabase `user_metadata` on sign up
 
-## Android Build (EAS — Standalone, No Expo Go)
+## Standalone Mobile Build (EAS — No Expo Go Required)
 
-- **EAS CLI**: `eas-cli@18.3.0` installed (local `node_modules/.bin/eas`)
+- **EAS CLI**: `eas-cli@18.4.0` installed (local `node_modules/.bin/eas`)
 - **Android package**: `com.hdxquisiteliquors.app`
 - **iOS bundle ID**: `com.hdxquisiteliquors.app`
+- **Android versionCode**: `1`
+- **iOS buildNumber**: `"1"`
 - **App slug**: `hd-xquisite-liquors`
 - **Deep-link scheme**: `hdxquisiteliquors`
-- **Config file**: `app.config.ts` (overrides `app.json`; `app.json` is now a minimal stub)
-- **Expo Go origin removed**: `app.config.ts` only injects the Replit origin when `EXPO_PUBLIC_DOMAIN` is present (dev). Production builds get no origin → native scheme routing.
-- **OTA updates**: disabled (`updates.enabled: false`) — standalone binary, no EAS Update server required.
+- **Config file**: `app.config.ts` (overrides `app.json`; `app.json` is a minimal stub)
+- **Dev origin**: injected only when `EXPO_PUBLIC_DOMAIN` is set (Replit preview). Production builds use native scheme routing.
+- **OTA updates**: disabled (`updates.enabled: false`) — no EAS Update server required.
+- **Metro**: `metro.config.js` blocks `web/`, `.local/skills`, `.local/state`, `.local/tasks` from the mobile bundle.
 
 ### EAS build profiles (eas.json)
 | Profile | Output | Distribution | Use case |
 |---------|--------|--------------|----------|
 | `development` | APK (dev client) | internal | Expo Dev Client for local debugging |
-| `preview` | APK | internal | Sideload & QA test (no Expo Go required) |
+| `preview` | APK | internal | Sideload & QA test |
 | `production` | **APK** | internal | Standalone production APK — installs directly |
 | `store` | AAB | store | Play Store submission |
 
-### Before building: set the production API URL
-Edit `eas.json` and replace `https://YOUR_BACKEND_URL_HERE` in all three non-dev profiles with the deployed backend URL. Alternatively set it in the [EAS Dashboard](https://expo.dev) under **Environment Variables**.
+### Required EAS secrets (set once via CLI or EAS Dashboard)
+The app reads `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` at build time.
+Set them as EAS project secrets before building:
+```bash
+eas secret:create --name EXPO_PUBLIC_SUPABASE_URL --value "https://xxx.supabase.co" --scope project
+eas secret:create --name EXPO_PUBLIC_SUPABASE_ANON_KEY --value "eyJ..." --scope project
+```
+Or set them in the [EAS Dashboard](https://expo.dev) → Project → Secrets.
 
 ### To build a standalone production APK
 ```bash
@@ -149,7 +158,12 @@ npx eas login
 # Build standalone APK (no Expo Go, no dev server)
 npx eas build -p android --profile production
 ```
-EAS queues a cloud build and returns a download URL for the `.apk`. Install directly on any Android device — it opens like a normal app.
+EAS queues a cloud build and returns a download URL for the `.apk`. Install directly on any Android device.
+
+### To build for iOS
+```bash
+npx eas build -p ios --profile production
+```
 
 ### To submit to the Play Store
 ```bash

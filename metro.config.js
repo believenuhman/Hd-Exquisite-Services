@@ -11,6 +11,7 @@ config.resolver.blockList = [
   /\.local\/skills\/.*/,
   /\.local\/state\/.*/,
   /\.local\/tasks\/.*/,
+  /web\/.*/,
 ];
 
 module.exports = config;

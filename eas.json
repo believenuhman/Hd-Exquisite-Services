@@ -15,27 +15,18 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://YOUR_BACKEND_URL_HERE"
       }
     },
     "production": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://YOUR_BACKEND_URL_HERE"
       }
     },
     "store": {
       "distribution": "store",
       "android": {
         "buildType": "app-bundle"
-      },
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://YOUR_BACKEND_URL_HERE"
       }
     }
   },

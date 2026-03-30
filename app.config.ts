@@ -14,7 +14,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     userInterfaceStyle: "dark" as const,
     newArchEnabled: true,
 
-    // Disable OTA updates for standalone builds — no EAS Update server needed
     updates: {
       enabled: false,
     },
@@ -28,17 +27,18 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ios: {
       supportsTablet: false,
       bundleIdentifier: "com.hdxquisiteliquors.app",
+      buildNumber: "1",
     },
 
     android: {
       package: "com.hdxquisiteliquors.app",
+      versionCode: 1,
       adaptiveIcon: {
         backgroundColor: "#0B0B0F",
         foregroundImage: "./assets/images/android-icon-foreground.png",
         backgroundImage: "./assets/images/android-icon-background.png",
         monochromeImage: "./assets/images/android-icon-monochrome.png",
       },
-      // Required permissions — only declare what the app actually uses
       permissions: [],
     },
 
@@ -49,15 +49,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     plugins: [
       [
         "expo-router",
-        // Only set origin in dev (Replit web preview).
-        // In production EAS builds, EXPO_PUBLIC_DOMAIN is not set, so origin is
-        // omitted — expo-router uses the native scheme (hdxquisiteliquors://)
         isDev
           ? { origin: `https://${process.env.EXPO_PUBLIC_DOMAIN}/` }
           : {},
       ],
       "expo-font",
       "expo-web-browser",
+      "expo-system-ui",
     ],
 
     experiments: {
@@ -66,7 +64,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
 
     extra: {
-      // Only include eas.projectId — remove router.origin from extra
       eas: {
         projectId: "92b2241c-b2a8-4e99-9261-818f958c038d",
       },
