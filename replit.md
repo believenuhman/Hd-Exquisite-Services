@@ -44,6 +44,7 @@ A premium liquor delivery web app (React + Vite + Tailwind) built for Median web
 - **payment_status values**: `pending`, `paid`, `failed`, `cancelled`, `refunded`
 - **payment_method values**: `cash_on_delivery`, `online_card`
 - **DB Migration**: Run `supabase-payment-migration.sql` in Supabase SQL Editor (includes "cancelled" in constraint)
+- **Auth guard bypass**: Payment result routes (`/payment-success`, `/payment-failed`, `/payment-cancelled`, `/payment/*`) bypass the auth check so users returning from Stripe always see their result (even if guest session was cleared)
 
 ## Environment Variables (Secrets)
 

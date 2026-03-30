@@ -3,12 +3,15 @@ import { useNavigate, useParams } from "react-router-dom";
 import { IoChevronBack, IoStar, IoAdd, IoRemove, IoCart } from "react-icons/io5";
 import { supabase, Product } from "@/lib/supabase";
 import { useCart } from "@/context/CartContext";
+import { useAppSettings } from "@/context/AppSettingsContext";
 import { getProductImage } from "@/components/ProductCard";
 
 export function ProductDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { addToCart, items, updateQuantity } = useCart();
+  const { settings } = useAppSettings();
+  const currSym = settings?.currency_symbol ?? "$";
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [qty, setQty] = useState(1);
@@ -93,7 +96,7 @@ export function ProductDetail() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <p className="font-inter text-xs mb-1" style={{ color: "rgba(255,255,255,0.4)" }}>Price</p>
-            <p className="font-inter font-bold text-3xl" style={{ color: "#E4A12B" }}>${product.price?.toFixed(2)}</p>
+            <p className="font-inter font-bold text-3xl" style={{ color: "#E4A12B" }}>{currSym}{product.price?.toFixed(2)}</p>
           </div>
           <div className="flex items-center gap-3">
             <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="flex items-center justify-center rounded-full press-active"

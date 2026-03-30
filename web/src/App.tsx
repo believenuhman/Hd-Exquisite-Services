@@ -4,6 +4,7 @@ import { useAgeGate } from "@/context/AgeGateContext";
 import { useAuth } from "@/context/AuthContext";
 import { SplashScreen } from "@/components/SplashScreen";
 import { BottomNav } from "@/components/BottomNav";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 import { AgeGate } from "@/pages/AgeGate";
 import { Welcome } from "@/pages/auth/Welcome";
@@ -41,7 +42,15 @@ function AppInner() {
       <div style={{ width: 32, height: 32, border: "2px solid rgba(228,161,43,0.2)", borderTopColor: "#E4A12B", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
     </div>
   );
-  if (!user && !isGuest && location.pathname !== "/auth/welcome" && !location.pathname.startsWith("/auth")) {
+  // Payment result pages are always accessible (user may return from Stripe without a fresh session)
+  const isPaymentResultRoute = location.pathname.startsWith("/payment-success") ||
+    location.pathname.startsWith("/payment-failed") ||
+    location.pathname.startsWith("/payment-cancelled") ||
+    location.pathname.startsWith("/payment/");
+
+  if (!user && !isGuest && !isPaymentResultRoute &&
+      location.pathname !== "/auth/welcome" &&
+      !location.pathname.startsWith("/auth")) {
     return <Navigate to="/auth/welcome" replace />;
   }
 
@@ -82,5 +91,9 @@ function AppInner() {
 }
 
 export default function App() {
-  return <AppInner />;
+  return (
+    <ErrorBoundary>
+      <AppInner />
+    </ErrorBoundary>
+  );
 }
