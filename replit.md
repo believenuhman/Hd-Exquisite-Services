@@ -23,6 +23,18 @@ A premium liquor delivery web app (React + Vite + Tailwind) built for Median web
 - **Pages**: AgeGate → Welcome → Login/Signup/ForgotPassword → Home → Search → ProductDetail → Cart → Checkout → Profile → Orders → OrderTracking → Settings → ContactSupport → **PaymentMock** → **PaymentSuccess** → **PaymentFailed** → **PaymentCancelled**
 - **Components**: SplashScreen, BottomNav (5 tabs), DrawerMenu, ProductCard
 
+## REQUIRED: Run This Migration Before Going Live
+
+The `supabase-payment-migration.sql` file in the project root **must be applied** in Supabase before payment features work fully. Without it:
+- Payment method / status columns don't exist in the orders table
+- The app gracefully falls back (orders still save, Stripe still redirects) but payment_status won't be tracked
+
+**Steps:**
+1. Open your Supabase project → SQL Editor → New Query
+2. Paste the contents of `supabase-payment-migration.sql` and click Run
+
+Also set `VITE_STRIPE_PAYMENT_LINK` to your **live** Stripe payment link URL before going live (it currently falls back to a test link).
+
 ## Payment System
 
 - **Architecture**: Checkout saves order in Supabase before any redirect. No card data collected in-app.

@@ -28,9 +28,19 @@ export function PaymentFailed() {
 
     if (resolvedId) {
       try {
-        await supabase.from("orders").update({ payment_status: "failed" }).eq("id", resolvedId);
+        const { error } = await supabase
+          .from("orders")
+          .update({ payment_status: "failed" })
+          .eq("id", resolvedId);
+
+        // If payment_status column missing (migration not applied), silently ignore
+        if (error && error.code !== "PGRST204" && error.code !== "42703") {
+          console.error("[payment-failed] Failed to update order:", error);
+        } else if (error) {
+          console.warn("[payment-failed] Payment columns missing — run supabase-payment-migration.sql");
+        }
       } catch (err) {
-        console.error("[payment-failed] Failed to update order:", err);
+        console.error("[payment-failed] Unexpected error:", err);
       }
     }
     setUpdating(false);

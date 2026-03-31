@@ -14,7 +14,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     supabase
-      .from("app_settings")
+      .from("settings")
       .select("*")
       .single()
       .then(({ data }) => {

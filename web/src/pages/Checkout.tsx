@@ -53,7 +53,7 @@ export function Checkout() {
   };
 
   const createOrder = async (method: PaymentMethod) => {
-    const { data: order, error: orderErr } = await supabase.from("orders").insert({
+    const baseFields = {
       customer_name: name.trim(),
       customer_phone: phone.trim(),
       delivery_address: address.trim(),
@@ -66,13 +66,29 @@ export function Checkout() {
       currency_code: currencyCode,
       currency_symbol: sym,
       zone_id: selectedZone?.id ?? null,
+    };
+
+    const paymentFields = {
       payment_method: method,
       payment_status: "pending",
       gateway_name: method === "online_card" ? "stripe" : null,
-    }).select().single();
+    };
 
-    if (orderErr) throw new Error("Failed to create order: " + orderErr.message);
+    let res = await supabase
+      .from("orders")
+      .insert({ ...baseFields, ...paymentFields })
+      .select()
+      .single();
 
+    // If payment columns don't exist yet (migration not applied), retry without them
+    if (res.error?.code === "PGRST204" || res.error?.code === "42703") {
+      console.warn("[checkout] Payment columns missing — run supabase-payment-migration.sql in Supabase SQL Editor");
+      res = await supabase.from("orders").insert(baseFields).select().single();
+    }
+
+    if (res.error) throw new Error("Failed to create order: " + res.error.message);
+
+    const order = res.data;
     const orderItems = items.map((item) => ({
       order_id: order.id,
       product_id: item.product.id,

@@ -28,9 +28,19 @@ export function PaymentCancelled() {
     if (resolvedId) {
       try {
         // Keep order in DB but mark payment as cancelled
-        await supabase.from("orders").update({ payment_status: "cancelled" }).eq("id", resolvedId);
+        const { error } = await supabase
+          .from("orders")
+          .update({ payment_status: "cancelled" })
+          .eq("id", resolvedId);
+
+        // If payment_status column missing (migration not applied), silently ignore
+        if (error && error.code !== "PGRST204" && error.code !== "42703") {
+          console.error("[payment-cancelled] Failed to update order:", error);
+        } else if (error) {
+          console.warn("[payment-cancelled] Payment columns missing — run supabase-payment-migration.sql");
+        }
       } catch (err) {
-        console.error("[payment-cancelled] Failed to update order:", err);
+        console.error("[payment-cancelled] Unexpected error:", err);
       }
     }
     // Keep the pending key so retry works without re-filling the form

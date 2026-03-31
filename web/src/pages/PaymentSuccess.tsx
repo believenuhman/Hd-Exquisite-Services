@@ -19,10 +19,6 @@ export function PaymentSuccess() {
   const [orderId, setOrderId] = useState<string>("");
   const [paymentRef, setPaymentRef] = useState<string>("");
 
-  useEffect(() => {
-    confirmPayment();
-  }, []);
-
   const confirmPayment = async () => {
     // Recover the order ID: prefer localStorage, fall back to query param
     const storedId = localStorage.getItem(PENDING_ORDER_KEY) ?? "";
@@ -40,12 +36,20 @@ export function PaymentSuccess() {
     setPaymentRef(ref);
 
     try {
-      const { error } = await supabase.from("orders").update({
+      let { error } = await supabase.from("orders").update({
         payment_status: "paid",
         payment_reference: ref,
         gateway_name: "stripe",
         paid_at: new Date().toISOString(),
       }).eq("id", resolvedId);
+
+      // If payment columns don't exist yet (migration not applied), try without them
+      if (error?.code === "PGRST204" || error?.code === "42703") {
+        console.warn("[payment-success] Payment columns missing — run supabase-payment-migration.sql");
+        ({ error } = await supabase.from("orders").update({
+          status: "delivered",
+        }).eq("id", resolvedId));
+      }
 
       if (error) throw error;
 
@@ -59,6 +63,9 @@ export function PaymentSuccess() {
       setStatus("confirmed");
     }
   };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { confirmPayment(); }, []);
 
   if (status === "loading") {
     return (
