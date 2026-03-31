@@ -3,7 +3,6 @@ import { Stack, router, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { KeyboardProvider } from "react-native-keyboard-controller";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { CartProvider } from "@/context/CartContext";
@@ -139,12 +138,12 @@ export default function RootLayout() {
             <AppSettingsProvider>
               <CartProvider>
                 <GestureHandlerRootView style={{ flex: 1 }}>
-                  <KeyboardProvider>
+                  
                     <RootLayoutNav />
                     {!splashDone && (
                       <SplashOverlay onFinish={() => setSplashDone(true)} />
                     )}
-                  </KeyboardProvider>
+                  
                 </GestureHandlerRootView>
               </CartProvider>
             </AppSettingsProvider>

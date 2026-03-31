@@ -11,7 +11,7 @@ config.resolver.blockList = [
   /\.local\/skills\/.*/,
   /\.local\/state\/.*/,
   /\.local\/tasks\/.*/,
-  /web\/.*/,
+  new RegExp(`^${__dirname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/web/.*`),
 ];
 
 module.exports = config;
