@@ -38,7 +38,6 @@ export function Home() {
   const filtered = activeCategory === "All" ? products : products.filter((p) => p.category?.toLowerCase() === activeCategory.toLowerCase());
 
   const headerHeight = 56;
-  const safeTop = 0;
 
   return (
     <div className="fixed inset-0 flex flex-col" style={{ background: "#09090C" }}>

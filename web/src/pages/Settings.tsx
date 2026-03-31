@@ -130,7 +130,7 @@ export function Settings() {
         </Section>
 
         <p className="text-center font-inter text-xs pb-4 mt-2" style={{ color: "rgba(255,255,255,0.2)" }}>
-          © 2024 HD XQUISITE LIQUORS. All rights reserved.
+          © 2025 HD XQUISITE LIQUORS. All rights reserved.
         </p>
       </div>
     </div>

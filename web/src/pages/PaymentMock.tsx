@@ -7,8 +7,8 @@ export function PaymentMock() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const ref = searchParams.get("ref") ?? "";
-  const successUrl = searchParams.get("success") ?? "/payment/success";
-  const cancelUrl = searchParams.get("cancel") ?? "/payment/cancelled";
+  const successUrl = searchParams.get("success") ?? "/payment-success";
+  const cancelUrl = searchParams.get("cancel") ?? "/payment-cancelled";
 
   const [cardNumber, setCardNumber] = useState("");
   const [expiry, setExpiry] = useState("");
@@ -42,7 +42,7 @@ export function PaymentMock() {
   };
 
   const handleFail = () => {
-    const failUrl = new URL("/payment/failed", window.location.origin);
+    const failUrl = new URL("/payment-failed", window.location.origin);
     failUrl.searchParams.set("orderId", orderId ?? "");
     failUrl.searchParams.set("ref", ref);
     window.location.href = failUrl.toString();

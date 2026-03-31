@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAgeGate } from "@/context/AgeGateContext";
 import { useAuth } from "@/context/AuthContext";
 import { SplashScreen } from "@/components/SplashScreen";
@@ -26,14 +26,23 @@ import { PaymentSuccess } from "@/pages/PaymentSuccess";
 import { PaymentFailed } from "@/pages/PaymentFailed";
 import { PaymentCancelled } from "@/pages/PaymentCancelled";
 
+/** Redirect that preserves the current search-params (query string). */
+function QueryRedirect({ to }: { to: string }) {
+  const [searchParams] = useSearchParams();
+  const qs = searchParams.toString();
+  return <Navigate to={qs ? `${to}?${qs}` : to} replace />;
+}
+
 const TAB_PATHS = ["/", "/search", "/cart", "/profile", "/orders"];
+const NO_NAV_PREFIXES = ["/checkout", "/product/", "/order-tracking/", "/auth/", "/payment", "/settings", "/contact-support"];
 
 function AppInner() {
   const { verified } = useAgeGate();
   const { loading, user, isGuest } = useAuth();
   const [splash, setSplash] = useState(true);
   const location = useLocation();
-  const showBottomNav = TAB_PATHS.includes(location.pathname) || location.pathname.startsWith("/orders");
+  const isNoNavRoute = NO_NAV_PREFIXES.some((p) => location.pathname.startsWith(p));
+  const showBottomNav = !isNoNavRoute && (TAB_PATHS.includes(location.pathname) || location.pathname.startsWith("/orders"));
 
   if (splash) return <SplashScreen onDone={() => setSplash(false)} />;
   if (!verified) return <AgeGate />;
@@ -77,10 +86,10 @@ function AppInner() {
         <Route path="/payment-failed" element={<PaymentFailed />} />
         <Route path="/payment-cancelled" element={<PaymentCancelled />} />
 
-        {/* Legacy slash versions — redirect to canonical hyphen routes */}
-        <Route path="/payment/success" element={<Navigate to="/payment-success" replace />} />
-        <Route path="/payment/failed" element={<Navigate to="/payment-failed" replace />} />
-        <Route path="/payment/cancelled" element={<Navigate to="/payment-cancelled" replace />} />
+        {/* Legacy slash versions — redirect to canonical hyphen routes, preserving query params */}
+        <Route path="/payment/success" element={<QueryRedirect to="/payment-success" />} />
+        <Route path="/payment/failed" element={<QueryRedirect to="/payment-failed" />} />
+        <Route path="/payment/cancelled" element={<QueryRedirect to="/payment-cancelled" />} />
 
         <Route path="/payment/mock/:orderId" element={<PaymentMock />} />
         <Route path="*" element={<Navigate to="/" replace />} />

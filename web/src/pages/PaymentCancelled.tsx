@@ -4,7 +4,9 @@ import { IoCloseCircleOutline, IoRefresh, IoChevronBack, IoHome } from "react-ic
 import { supabase } from "@/lib/supabase";
 
 const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
-const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/test_28E7sK0Hwdf643lgUGbMQ00";
+const STRIPE_PAYMENT_LINK =
+  import.meta.env.VITE_STRIPE_PAYMENT_LINK ||
+  "https://buy.stripe.com/test_28E7sK0Hwdf643lgUGbMQ00";
 
 export function PaymentCancelled() {
   const [searchParams] = useSearchParams();

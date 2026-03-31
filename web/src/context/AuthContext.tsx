@@ -26,16 +26,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!mounted) return;
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (!session) {
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        if (!mounted) return;
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (!session) {
+          const guestVal = storage.get(GUEST_KEY);
+          if (guestVal === "true") setIsGuest(true);
+        }
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        // On network failure, fall back to guest-mode check and unblock the app
         const guestVal = storage.get(GUEST_KEY);
         if (guestVal === "true") setIsGuest(true);
-      }
-      setLoading(false);
-    });
+        setLoading(false);
+      });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return;

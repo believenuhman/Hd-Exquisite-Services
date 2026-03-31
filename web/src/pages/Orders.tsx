@@ -28,16 +28,34 @@ export function Orders() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user) {
-      supabase.from("orders").select("*").order("created_at", { ascending: false })
-        .then(({ data }) => { if (data) setOrders(data as Order[]); setLoading(false); });
-    } else if (isGuest) {
-      const savedPhone = storage.get("hd_saved_phone");
+    if (user || isGuest) {
+      // Use the phone number from user metadata or localStorage to scope orders to this user
+      const savedPhone =
+        user?.user_metadata?.phone ||
+        storage.get("hd_saved_phone") ||
+        "";
+
       if (savedPhone) {
-        supabase.from("orders").select("*").eq("customer_phone", savedPhone).order("created_at", { ascending: false })
-          .then(({ data }) => { if (data) setOrders(data as Order[]); setLoading(false); });
+        supabase
+          .from("orders")
+          .select("*")
+          .eq("customer_phone", savedPhone.trim())
+          .order("created_at", { ascending: false })
+          .then(({ data }) => {
+            if (data) setOrders(data as Order[]);
+            setLoading(false);
+          });
       } else {
-        setLoading(false);
+        // No phone available — fall back to fetching without filter
+        // (Supabase RLS should restrict results to the authenticated user's rows)
+        supabase
+          .from("orders")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .then(({ data }) => {
+            if (data) setOrders(data as Order[]);
+            setLoading(false);
+          });
       }
     } else {
       setLoading(false);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { IoChevronBack, IoCheckmarkCircle, IoAlertCircle, IoCard, IoCash } from "react-icons/io5";
 import { supabase, DeliveryZone } from "@/lib/supabase";
@@ -7,7 +7,9 @@ import { useAppSettings } from "@/context/AppSettingsContext";
 import { useAuth } from "@/context/AuthContext";
 import { storage } from "@/lib/storage";
 
-const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/test_28E7sK0Hwdf643lgUGbMQ00";
+const STRIPE_PAYMENT_LINK =
+  import.meta.env.VITE_STRIPE_PAYMENT_LINK ||
+  "https://buy.stripe.com/test_28E7sK0Hwdf643lgUGbMQ00";
 const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
 
 type PaymentMethod = "cash_on_delivery" | "online_card";
@@ -28,6 +30,7 @@ export function Checkout() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash_on_delivery");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     supabase.from("delivery_zones").select("*").eq("is_active", true)
@@ -82,9 +85,11 @@ export function Checkout() {
   };
 
   const handlePlaceOrder = async () => {
+    if (submittingRef.current) return;
     const validationError = validate();
     if (validationError) return setError(validationError);
     setError(null);
+    submittingRef.current = true;
     setLoading(true);
 
     storage.set("hd_saved_name", name.trim());
@@ -97,6 +102,7 @@ export function Checkout() {
       if (paymentMethod === "cash_on_delivery") {
         clearCart();
         setLoading(false);
+        submittingRef.current = false;
         navigate(`/order-tracking/${order.id}`);
         return;
       }
@@ -106,12 +112,11 @@ export function Checkout() {
       localStorage.setItem(PENDING_ORDER_KEY, order.id);
 
       clearCart();
-      setLoading(false);
-
-      // Redirect to Stripe payment link
+      // Keep loading=true / submittingRef=true — we're about to leave the page
       window.location.href = STRIPE_PAYMENT_LINK;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Something went wrong. Please try again.";
+      submittingRef.current = false;
       setLoading(false);
       setError(msg);
     }

@@ -30,7 +30,7 @@ A premium liquor delivery web app (React + Vite + Tailwind) built for Median web
   1. User fills checkout form, selects "Pay Online"
   2. Order created in Supabase: `payment_status=pending`, `payment_method=online_card`, `gateway_name=stripe`
   3. Order ID saved to `localStorage["hd_pending_payment_order_id"]`
-  4. User redirected to `https://buy.stripe.com/test_28E7sK0Hwdf643lgUGbMQ00`
+  4. User redirected to Stripe payment link (see env var `VITE_STRIPE_PAYMENT_LINK`)
   5. Stripe handles card entry on their hosted page
   6. On success → redirected to `/payment-success` (updates order to `paid`, clears localStorage)
   7. On cancel → redirected to `/payment-cancelled` (updates order to `cancelled`)
@@ -39,12 +39,13 @@ A premium liquor delivery web app (React + Vite + Tailwind) built for Median web
 - **Retry flow**: Both failed and cancelled screens offer "Retry Payment" — re-opens Stripe link, order ID still in localStorage
 - **Cash on Delivery**: Order saved normally, `payment_status=pending`, navigates directly to order tracking
 - **Order tracking**: Shows payment status badge (Paid/Awaiting Payment/Payment Failed/Payment Cancelled/Refunded) + "Complete Payment" banner if outstanding
-- **Result routes**: `/payment-success`, `/payment-cancelled`, `/payment-failed` (canonical). Old `/payment/*` routes redirect to these.
+- **Result routes**: `/payment-success`, `/payment-cancelled`, `/payment-failed` (canonical). Old `/payment/*` routes redirect to these **with query params preserved** (via `QueryRedirect`).
 - **Order fields**: `payment_method`, `payment_status`, `payment_reference`, `gateway_name`, `paid_at`
 - **payment_status values**: `pending`, `paid`, `failed`, `cancelled`, `refunded`
 - **payment_method values**: `cash_on_delivery`, `online_card`
 - **DB Migration**: Run `supabase-payment-migration.sql` in Supabase SQL Editor (includes "cancelled" in constraint)
 - **Auth guard bypass**: Payment result routes (`/payment-success`, `/payment-failed`, `/payment-cancelled`, `/payment/*`) bypass the auth check so users returning from Stripe always see their result (even if guest session was cleared)
+- **Double-submit guard**: `submittingRef` in Checkout prevents duplicate orders if user taps "Place Order" twice
 
 ## Environment Variables (Secrets)
 
@@ -53,6 +54,7 @@ A premium liquor delivery web app (React + Vite + Tailwind) built for Median web
 | `EXPO_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
 | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anonymous key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Recommended | Secure backend order updates |
+| `VITE_STRIPE_PAYMENT_LINK` | **Prod** | Live Stripe payment link URL (falls back to hardcoded TEST link) |
 | `PAYMENT_GATEWAY` | No | "wipay" (default), "stripe", or "mock" |
 | `WIPAY_ACCOUNT_NUMBER` | No* | WiPay merchant account number (default: "1" test) |
 | `WIPAY_API_KEY` | No* | WiPay API key for hash verification (default: "123" test) |

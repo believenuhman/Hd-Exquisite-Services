@@ -13,10 +13,17 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.from("app_settings").select("*").single().then(({ data }) => {
-      if (data) setSettings(data as AppSettings);
-      setLoading(false);
-    });
+    supabase
+      .from("app_settings")
+      .select("*")
+      .single()
+      .then(({ data }) => {
+        if (data) setSettings(data as AppSettings);
+        setLoading(false);
+      })
+      .catch(() => {
+        setLoading(false);
+      });
   }, []);
 
   return <AppSettingsContext.Provider value={{ settings, loading }}>{children}</AppSettingsContext.Provider>;

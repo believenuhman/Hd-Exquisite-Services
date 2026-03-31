@@ -21,7 +21,7 @@ const FAQS = [
   },
   {
     q: "What payment methods do you accept?",
-    a: "We currently accept cash on delivery. Card payment options are coming soon.",
+    a: "We accept cash on delivery and secure online card payments via Stripe.",
   },
   {
     q: "What if my order is incorrect or damaged?",

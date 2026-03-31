@@ -6,7 +6,9 @@ import {
 } from "react-icons/io5";
 import { supabase, Order, OrderItem } from "@/lib/supabase";
 
-const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/test_28E7sK0Hwdf643lgUGbMQ00";
+const STRIPE_PAYMENT_LINK =
+  import.meta.env.VITE_STRIPE_PAYMENT_LINK ||
+  "https://buy.stripe.com/test_28E7sK0Hwdf643lgUGbMQ00";
 
 const STEPS: { key: Order["status"]; label: string; sub: string; icon: string }[] = [
   { key: "received",         label: "Order Received",     sub: "We got your order",       icon: "📋" },
