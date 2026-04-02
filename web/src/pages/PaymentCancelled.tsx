@@ -4,36 +4,30 @@ import { IoCloseCircleOutline, IoRefresh, IoChevronBack, IoHome } from "react-ic
 import { supabase } from "@/lib/supabase";
 
 const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
-const STRIPE_PAYMENT_LINK =
-  import.meta.env.VITE_STRIPE_PAYMENT_LINK ||
-  "https://buy.stripe.com/test_28E7sK0Hwdf643lgUGbMQ00";
+const WIPAY_PAYMENT_LINK = import.meta.env.VITE_WIPAY_PAYMENT_LINK || "";
 
 export function PaymentCancelled() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const queryOrderId = searchParams.get("orderId") ?? "";
 
-  const [orderId, setOrderId] = useState<string>("");
+  const [orderId, setOrderId]   = useState<string>("");
   const [updating, setUpdating] = useState(true);
 
-  useEffect(() => {
-    markCancelled();
-  }, []);
+  useEffect(() => { markCancelled(); }, []);
 
   const markCancelled = async () => {
-    const storedId = localStorage.getItem(PENDING_ORDER_KEY) ?? "";
+    const storedId   = localStorage.getItem(PENDING_ORDER_KEY) ?? "";
     const resolvedId = storedId || queryOrderId;
     setOrderId(resolvedId);
 
     if (resolvedId) {
       try {
-        // Keep order in DB but mark payment as cancelled
         const { error } = await supabase
           .from("orders")
           .update({ payment_status: "cancelled" })
           .eq("id", resolvedId);
 
-        // If payment_status column missing (migration not applied), silently ignore
         if (error && error.code !== "PGRST204" && error.code !== "42703") {
           console.error("[payment-cancelled] Failed to update order:", error);
         } else if (error) {
@@ -43,13 +37,16 @@ export function PaymentCancelled() {
         console.error("[payment-cancelled] Unexpected error:", err);
       }
     }
-    // Keep the pending key so retry works without re-filling the form
+    // Keep pending key — retry without re-filling the form
     setUpdating(false);
   };
 
   const handleRetryPayment = () => {
-    // Go back to Stripe — order ID is still in localStorage
-    window.location.href = STRIPE_PAYMENT_LINK;
+    if (WIPAY_PAYMENT_LINK) {
+      window.location.href = WIPAY_PAYMENT_LINK;
+    } else {
+      navigate("/checkout");
+    }
   };
 
   if (updating) {
@@ -63,6 +60,7 @@ export function PaymentCancelled() {
   return (
     <div className="fixed inset-0 flex flex-col" style={{ background: "#09090C" }}>
       <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6">
+
         {/* Cancelled icon */}
         <div className="relative flex items-center justify-center">
           <div className="absolute" style={{ width: 120, height: 120, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,255,255,0.04) 0%, transparent 70%)" }} />
@@ -91,18 +89,21 @@ export function PaymentCancelled() {
         </div>
 
         <div className="w-full flex flex-col gap-3">
-          <button onClick={handleRetryPayment} className="w-full py-4 rounded-2xl font-inter font-bold text-sm tracking-widest press-active flex items-center justify-center gap-2"
-            style={{ background: "linear-gradient(135deg, #C91E8C, #9B15A0)", color: "#fff" }}>
+          <button onClick={handleRetryPayment}
+            className="w-full py-4 rounded-2xl font-inter font-bold text-sm tracking-widest press-active flex items-center justify-center gap-2"
+            style={{ background: "linear-gradient(135deg, #D4901A, #F5C842)", color: "#09090C" }}>
             <IoRefresh size={18} />
-            COMPLETE PAYMENT
+            {WIPAY_PAYMENT_LINK ? "COMPLETE WITH WIPAY" : "BACK TO CHECKOUT"}
           </button>
-          <button onClick={() => navigate("/checkout")} className="w-full py-3 rounded-2xl font-inter text-sm font-semibold press-active flex items-center justify-center gap-2"
+          <button onClick={() => navigate("/checkout")}
+            className="w-full py-3 rounded-2xl font-inter text-sm font-semibold press-active flex items-center justify-center gap-2"
             style={{ background: "rgba(228,161,43,0.08)", border: "1px solid rgba(228,161,43,0.2)", color: "#E4A12B" }}>
             <IoChevronBack size={16} />
             Back to Checkout
           </button>
           {orderId && (
-            <button onClick={() => navigate(`/order-tracking/${orderId}`)} className="w-full py-3 rounded-2xl font-inter text-sm press-active"
+            <button onClick={() => navigate(`/order-tracking/${orderId}`)}
+              className="w-full py-3 rounded-2xl font-inter text-sm press-active"
               style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.45)" }}>
               View Order Details
             </button>

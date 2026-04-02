@@ -21,7 +21,7 @@ const FAQS = [
   },
   {
     q: "What payment methods do you accept?",
-    a: "We accept cash on delivery and secure online card payments via Stripe.",
+    a: "We accept cash on delivery and secure online card payments via WiPay.",
   },
   {
     q: "What if my order is incorrect or damaged?",

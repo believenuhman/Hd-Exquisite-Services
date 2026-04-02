@@ -10,7 +10,7 @@ A premium liquor delivery web app (React + Vite + Tailwind) built for Median web
 - **Auth**: Supabase Auth with localStorage session persistence
 - **State**: React Context (CartContext, AuthContext, AgeGateContext, AppSettingsContext)
 - **Fonts**: PlayfairDisplay (headings) + CormorantGaramond (body) + Inter (UI/product cards)
-- **Payments**: Stripe payment link (active); WiPay Caribbean code retained; Mock fallback available
+- **Payments**: WiPay hosted payment link (primary); Cash on Delivery; Stripe can be re-added later
 
 ## Web App (`web/`)
 
@@ -27,56 +27,51 @@ A premium liquor delivery web app (React + Vite + Tailwind) built for Median web
 
 The `supabase-payment-migration.sql` file in the project root **must be applied** in Supabase before payment features work fully. Without it:
 - Payment method / status columns don't exist in the orders table
-- The app gracefully falls back (orders still save, Stripe still redirects) but payment_status won't be tracked
+- The app gracefully falls back (orders still save, WiPay still redirects) but payment_status won't be tracked
 
 **Steps:**
 1. Open your Supabase project → SQL Editor → New Query
 2. Paste the contents of `supabase-payment-migration.sql` and click Run
 
-Also set `VITE_STRIPE_PAYMENT_LINK` to your **live** Stripe payment link URL before going live (it currently falls back to a test link).
+Set `VITE_WIPAY_PAYMENT_LINK` to your WiPay payment link URL to activate online payment (see Environment Variables below).
 
 ## Payment System
 
 - **Architecture**: Checkout saves order in Supabase before any redirect. No card data collected in-app.
-- **Active flow — Stripe payment link**:
+- **Active flow — WiPay hosted payment link**:
   1. User fills checkout form, selects "Pay Online"
-  2. Order created in Supabase: `payment_status=pending`, `payment_method=online_card`, `gateway_name=stripe`
-  3. Order ID saved to `localStorage["hd_pending_payment_order_id"]`
-  4. User redirected to Stripe payment link (see env var `VITE_STRIPE_PAYMENT_LINK`)
-  5. Stripe handles card entry on their hosted page
-  6. On success → redirected to `/payment-success` (updates order to `paid`, clears localStorage)
-  7. On cancel → redirected to `/payment-cancelled` (updates order to `cancelled`)
-  8. On failure → redirected to `/payment-failed` (updates order to `failed`)
-- **Stripe dashboard**: Configure the payment link's success URL to `https://<domain>/payment-success` and cancel URL to `https://<domain>/payment-cancelled`
-- **Retry flow**: Both failed and cancelled screens offer "Retry Payment" — re-opens Stripe link, order ID still in localStorage
+  2. App validates all fields + checks `VITE_WIPAY_PAYMENT_LINK` is set
+  3. Order created in Supabase: `payment_status=pending`, `payment_method=online_card`, `gateway_name=wipay`
+  4. Order ID saved to `localStorage["hd_pending_payment_order_id"]`
+  5. User redirected to WiPay hosted payment page (`VITE_WIPAY_PAYMENT_LINK`)
+  6. WiPay handles card entry on their hosted page
+  7. On success → WiPay redirects to `/payment-success` — reads `transaction_id` param, updates order to `paid`
+  8. On cancel → WiPay redirects to `/payment-cancelled` — updates order to `cancelled`
+  9. On failure → WiPay redirects to `/payment-failed` — updates order to `failed`
+  10. WiPay may also return a `status` param: "success", "failed", "cancelled" — PaymentSuccess handles routing automatically
+- **WiPay dashboard setup**: Configure the payment link's return URL to `https://<domain>/payment-success`. WiPay will append `?status=success&transaction_id=...` (or failed/cancelled). Cancel URL: `https://<domain>/payment-cancelled`.
+- **Retry flow**: Failed and cancelled screens offer "Retry with WiPay" — re-opens WiPay link, order ID still in localStorage
+- **Not configured**: If `VITE_WIPAY_PAYMENT_LINK` is empty, "Pay Online" button is disabled with a clear message; users can still use Cash on Delivery
 - **Cash on Delivery**: Order saved normally, `payment_status=pending`, navigates directly to order tracking
-- **Order tracking**: Shows payment status badge (Paid/Awaiting Payment/Payment Failed/Payment Cancelled/Refunded) + "Complete Payment" banner if outstanding
-- **Result routes**: `/payment-success`, `/payment-cancelled`, `/payment-failed` (canonical). Old `/payment/*` routes redirect to these **with query params preserved** (via `QueryRedirect`).
+- **Order tracking**: Shows payment status badge (Paid/Awaiting Payment/Payment Failed/Payment Cancelled/Refunded) + "Pay with WiPay" banner if outstanding
+- **Result routes**: `/payment-success`, `/payment-cancelled`, `/payment-failed` (canonical). Old `/payment/*` routes redirect with query params preserved (via `QueryRedirect`).
 - **Order fields**: `payment_method`, `payment_status`, `payment_reference`, `gateway_name`, `paid_at`
 - **payment_status values**: `pending`, `paid`, `failed`, `cancelled`, `refunded`
 - **payment_method values**: `cash_on_delivery`, `online_card`
-- **DB Migration**: Run `supabase-payment-migration.sql` in Supabase SQL Editor (includes "cancelled" in constraint)
-- **Auth guard bypass**: Payment result routes (`/payment-success`, `/payment-failed`, `/payment-cancelled`, `/payment/*`) bypass the auth check so users returning from Stripe always see their result (even if guest session was cleared)
+- **DB Migration**: Run `supabase-payment-migration.sql` in Supabase SQL Editor
+- **Auth guard bypass**: Payment result routes bypass auth check — users returning from WiPay always see their result even if guest session was cleared
 - **Double-submit guard**: `submittingRef` in Checkout prevents duplicate orders if user taps "Place Order" twice
 
 ## Environment Variables (Secrets)
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `EXPO_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
-| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anonymous key |
+| `VITE_SUPABASE_URL` | Yes | Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | Yes | Supabase anonymous key |
+| `VITE_WIPAY_PAYMENT_LINK` | **For online payment** | Your WiPay hosted payment link URL. When set, "Pay Online" is active. If blank, Pay Online button is disabled. |
+| `VITE_WIPAY_SUCCESS_URL` | No | Override for success return path (default: `/payment-success`) |
+| `VITE_WIPAY_CANCEL_URL` | No | Override for cancel return path (default: `/payment-cancelled`) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Recommended | Secure backend order updates |
-| `VITE_STRIPE_PAYMENT_LINK` | **Prod** | Live Stripe payment link URL (falls back to hardcoded TEST link) |
-| `PAYMENT_GATEWAY` | No | "wipay" (default), "stripe", or "mock" |
-| `WIPAY_ACCOUNT_NUMBER` | No* | WiPay merchant account number (default: "1" test) |
-| `WIPAY_API_KEY` | No* | WiPay API key for hash verification (default: "123" test) |
-| `WIPAY_COUNTRY_CODE` | No | "TT" (default), "BB", or "JM" |
-| `WIPAY_ENVIRONMENT` | No | "sandbox" (default) or "live" |
-| `WIPAY_FEE_STRUCTURE` | No | "customer_pay" (default), "merchant_pay", or "split" |
-| `STRIPE_SECRET_KEY` | No* | Activates Stripe mode |
-| `STRIPE_WEBHOOK_SECRET` | No* | Required for Stripe webhook validation |
-
-*Required for live/production payments
 
 ## Design System
 

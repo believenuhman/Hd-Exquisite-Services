@@ -11,18 +11,30 @@ export function PaymentSuccess() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  // Stripe may return session_id; we always prefer our stored order ID
-  const sessionId = searchParams.get("session_id") ?? "";
-  const queryOrderId = searchParams.get("orderId") ?? "";
+  // WiPay returns: status, transaction_id, total (as GET params)
+  // Fallback: orderId passed as a query param from custom return URL
+  const wipayStatus      = searchParams.get("status")         ?? "";
+  const transactionId    = searchParams.get("transaction_id") ?? searchParams.get("hash") ?? "";
+  const queryOrderId     = searchParams.get("orderId")        ?? "";
 
-  const [status, setStatus] = useState<Status>("loading");
-  const [orderId, setOrderId] = useState<string>("");
+  const [status, setStatus]     = useState<Status>("loading");
+  const [orderId, setOrderId]   = useState<string>("");
   const [paymentRef, setPaymentRef] = useState<string>("");
 
   const confirmPayment = async () => {
+    // If WiPay returned a non-success status, redirect to appropriate page
+    if (wipayStatus && wipayStatus.toLowerCase() !== "success") {
+      if (wipayStatus.toLowerCase() === "cancelled" || wipayStatus.toLowerCase() === "cancel") {
+        navigate("/payment-cancelled", { replace: true });
+        return;
+      }
+      navigate("/payment-failed", { replace: true });
+      return;
+    }
+
     // Recover the order ID: prefer localStorage, fall back to query param
-    const storedId = localStorage.getItem(PENDING_ORDER_KEY) ?? "";
-    const resolvedId = storedId || queryOrderId;
+    const storedId    = localStorage.getItem(PENDING_ORDER_KEY) ?? "";
+    const resolvedId  = storedId || queryOrderId;
 
     if (!resolvedId) {
       setStatus("error");
@@ -31,19 +43,19 @@ export function PaymentSuccess() {
 
     setOrderId(resolvedId);
 
-    // Build payment reference from Stripe session ID if available
-    const ref = sessionId || `stripe_${Date.now()}`;
+    // Build payment reference from WiPay transaction_id if available
+    const ref = transactionId || `wipay_${Date.now()}`;
     setPaymentRef(ref);
 
     try {
       let { error } = await supabase.from("orders").update({
-        payment_status: "paid",
+        payment_status:    "paid",
         payment_reference: ref,
-        gateway_name: "stripe",
-        paid_at: new Date().toISOString(),
+        gateway_name:      "wipay",
+        paid_at:           new Date().toISOString(),
       }).eq("id", resolvedId);
 
-      // If payment columns don't exist yet (migration not applied), try without them
+      // If payment columns don't exist yet (migration not applied), try status only
       if (error?.code === "PGRST204" || error?.code === "42703") {
         console.warn("[payment-success] Payment columns missing — run supabase-payment-migration.sql");
         ({ error } = await supabase.from("orders").update({
@@ -53,12 +65,11 @@ export function PaymentSuccess() {
 
       if (error) throw error;
 
-      // Clear the pending order from storage
       localStorage.removeItem(PENDING_ORDER_KEY);
       setStatus("confirmed");
     } catch (err) {
       console.error("[payment-success] Failed to update order:", err);
-      // Still show success — the payment happened on Stripe's end
+      // Show success anyway — the payment happened on WiPay's end
       localStorage.removeItem(PENDING_ORDER_KEY);
       setStatus("confirmed");
     }
@@ -71,7 +82,7 @@ export function PaymentSuccess() {
     return (
       <div className="fixed inset-0 flex flex-col items-center justify-center gap-4" style={{ background: "#09090C" }}>
         <div style={{ width: 40, height: 40, border: "2px solid rgba(228,161,43,0.2)", borderTopColor: "#E4A12B", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
-        <p className="font-inter text-white">Confirming your payment...</p>
+        <p className="font-inter text-white">Confirming your payment…</p>
         <p className="font-inter text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>Please wait a moment</p>
       </div>
     );
@@ -90,12 +101,14 @@ export function PaymentSuccess() {
           </p>
         </div>
         <div className="w-full flex flex-col gap-3">
-          <button onClick={() => navigate("/orders")} className="w-full py-4 rounded-2xl font-inter font-bold text-sm tracking-widest press-active flex items-center justify-center gap-2"
+          <button onClick={() => navigate("/orders")}
+            className="w-full py-4 rounded-2xl font-inter font-bold text-sm tracking-widest press-active flex items-center justify-center gap-2"
             style={{ background: "linear-gradient(135deg, #D4901A, #F5C842)", color: "#09090C" }}>
             <IoReceiptOutline size={18} />
             VIEW MY ORDERS
           </button>
-          <button onClick={() => navigate("/")} className="w-full py-3 rounded-2xl font-inter text-sm press-active flex items-center justify-center gap-2"
+          <button onClick={() => navigate("/")}
+            className="w-full py-3 rounded-2xl font-inter text-sm press-active flex items-center justify-center gap-2"
             style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.6)" }}>
             <IoHome size={16} />
             Back to Home
@@ -108,6 +121,7 @@ export function PaymentSuccess() {
   return (
     <div className="fixed inset-0 flex flex-col" style={{ background: "#09090C" }}>
       <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6">
+
         {/* Success icon with glow */}
         <div className="relative flex items-center justify-center">
           <div className="absolute" style={{ width: 120, height: 120, borderRadius: "50%", background: "radial-gradient(circle, rgba(76,175,80,0.15) 0%, transparent 70%)" }} />
@@ -125,7 +139,7 @@ export function PaymentSuccess() {
 
         {paymentRef && (
           <div className="w-full rounded-2xl p-4 text-center" style={{ background: "linear-gradient(145deg, #1C1828, #121212)", border: "1px solid rgba(76,175,80,0.15)" }}>
-            <p className="font-inter text-xs mb-1" style={{ color: "rgba(255,255,255,0.35)" }}>Payment Reference</p>
+            <p className="font-inter text-xs mb-1" style={{ color: "rgba(255,255,255,0.35)" }}>WiPay Reference</p>
             <p className="font-inter text-sm font-bold text-white tracking-wider break-all">{paymentRef}</p>
           </div>
         )}
@@ -144,17 +158,20 @@ export function PaymentSuccess() {
 
         <div className="w-full flex flex-col gap-3">
           {orderId && (
-            <button onClick={() => navigate(`/order-tracking/${orderId}`)} className="w-full py-4 rounded-2xl font-inter font-bold text-sm tracking-widest press-active flex items-center justify-center gap-2"
+            <button onClick={() => navigate(`/order-tracking/${orderId}`)}
+              className="w-full py-4 rounded-2xl font-inter font-bold text-sm tracking-widest press-active flex items-center justify-center gap-2"
               style={{ background: "linear-gradient(135deg, #D4901A, #F5C842)", color: "#09090C" }}>
               <IoReceiptOutline size={18} />
               TRACK MY ORDER
             </button>
           )}
-          <button onClick={() => navigate("/orders")} className="w-full py-3 rounded-2xl font-inter text-sm press-active"
+          <button onClick={() => navigate("/orders")}
+            className="w-full py-3 rounded-2xl font-inter text-sm press-active"
             style={{ background: "rgba(228,161,43,0.08)", border: "1px solid rgba(228,161,43,0.2)", color: "#E4A12B" }}>
             View All Orders
           </button>
-          <button onClick={() => navigate("/")} className="w-full py-3 rounded-2xl font-inter text-sm press-active flex items-center justify-center gap-2"
+          <button onClick={() => navigate("/")}
+            className="w-full py-3 rounded-2xl font-inter text-sm press-active flex items-center justify-center gap-2"
             style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}>
             <IoHome size={15} />
             Continue Shopping

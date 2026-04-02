@@ -6,9 +6,7 @@ import {
 } from "react-icons/io5";
 import { supabase, Order, OrderItem } from "@/lib/supabase";
 
-const STRIPE_PAYMENT_LINK =
-  import.meta.env.VITE_STRIPE_PAYMENT_LINK ||
-  "https://buy.stripe.com/test_28E7sK0Hwdf643lgUGbMQ00";
+const WIPAY_PAYMENT_LINK = import.meta.env.VITE_WIPAY_PAYMENT_LINK || "";
 
 const STEPS: { key: Order["status"]; label: string; sub: string; icon: string }[] = [
   { key: "received",         label: "Order Received",     sub: "We got your order",       icon: "📋" },
@@ -89,7 +87,11 @@ export function OrderTracking() {
 
   const handleRetryPayment = () => {
     localStorage.setItem("hd_pending_payment_order_id", order.id);
-    window.location.href = STRIPE_PAYMENT_LINK;
+    if (WIPAY_PAYMENT_LINK) {
+      window.location.href = WIPAY_PAYMENT_LINK;
+    } else {
+      navigate("/checkout");
+    }
   };
 
   return (
@@ -129,8 +131,8 @@ export function OrderTracking() {
               {order.payment_method === "online_card"
                 ? <IoCard size={11} color="#C91E8C" />
                 : <IoCash size={11} color="#E4A12B" />}
-              <span className="font-inter text-xs font-semibold" style={{ color: order.payment_method === "online_card" ? "#C91E8C" : "#E4A12B" }}>
-                {order.payment_method === "online_card" ? "Paid Online" : "Cash on Delivery"}
+              <span className="font-inter text-xs font-semibold" style={{ color: order.payment_method === "online_card" ? "#E4A12B" : "#E4A12B" }}>
+                {order.payment_method === "online_card" ? "WiPay Online" : "Cash on Delivery"}
               </span>
             </div>
             <PaymentStatusBadge status={order.payment_status} />
@@ -157,9 +159,9 @@ export function OrderTracking() {
               Complete your payment to confirm this order.
             </p>
             <button onClick={handleRetryPayment} className="w-full py-3 rounded-xl font-inter font-bold text-sm press-active flex items-center justify-center gap-2"
-              style={{ background: "linear-gradient(135deg, #C91E8C, #9B15A0)", color: "#fff" }}>
+              style={{ background: "linear-gradient(135deg, #D4901A, #F5C842)", color: "#09090C" }}>
               <IoRefresh size={16} />
-              {order.payment_status === "pending" ? "COMPLETE PAYMENT" : "RETRY PAYMENT"}
+              {order.payment_status === "pending" ? "PAY WITH WIPAY" : "RETRY WITH WIPAY"}
             </button>
           </div>
         )}
