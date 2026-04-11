@@ -81,24 +81,24 @@ args = "Start Frontend"
 name = "Start application"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "sh -c 'npm run server:build && PORT=3000 node server_dist/index.js & sleep 2 && cd web && npm install --legacy-peer-deps && npx vite --host 0.0.0.0 --port 5000'"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "sh -c 'npm run server:build && PORT=5001 node server_dist/index.js & sleep 2 && cd web && npm install --legacy-peer-deps && npx vite --host 0.0.0.0 --port 3000'"
+waitForPort = 3000
 
 [[workflows.workflow]]
 name = "Start Backend"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "console"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "echo 'Backend handled by Start application workflow'"
-
-[workflows.workflow.metadata]
-outputType = "console"
 
 [[workflows.workflow]]
 name = "Start Frontend"
