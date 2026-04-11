@@ -6,8 +6,6 @@ import {
 } from "react-icons/io5";
 import { supabase, Order, OrderItem } from "@/lib/supabase";
 
-const WIPAY_PAYMENT_LINK = import.meta.env.VITE_WIPAY_PAYMENT_LINK || "";
-
 const STEPS: { key: Order["status"]; label: string; sub: string; icon: string }[] = [
   { key: "received",         label: "Order Received",     sub: "We got your order",       icon: "📋" },
   { key: "packing",          label: "Packing",            sub: "Your order is being packed", icon: "📦" },
@@ -86,12 +84,9 @@ export function OrderTracking() {
     (order.payment_status === "pending" || order.payment_status === "cancelled" || order.payment_status === "failed");
 
   const handleRetryPayment = () => {
+    // Store the order ID so checkout can pick it up, then send back to checkout
     localStorage.setItem("hd_pending_payment_order_id", order.id);
-    if (WIPAY_PAYMENT_LINK) {
-      window.location.href = WIPAY_PAYMENT_LINK;
-    } else {
-      navigate("/checkout");
-    }
+    navigate("/checkout");
   };
 
   return (
@@ -132,7 +127,7 @@ export function OrderTracking() {
                 ? <IoCard size={11} color="#C91E8C" />
                 : <IoCash size={11} color="#E4A12B" />}
               <span className="font-inter text-xs font-semibold" style={{ color: order.payment_method === "online_card" ? "#E4A12B" : "#E4A12B" }}>
-                {order.payment_method === "online_card" ? "WiPay Online" : "Cash on Delivery"}
+                {order.payment_method === "online_card" ? "PayPal Online" : "Cash on Delivery"}
               </span>
             </div>
             <PaymentStatusBadge status={order.payment_status} />
@@ -161,7 +156,7 @@ export function OrderTracking() {
             <button onClick={handleRetryPayment} className="w-full py-3 rounded-xl font-inter font-bold text-sm press-active flex items-center justify-center gap-2"
               style={{ background: "linear-gradient(135deg, #D4901A, #F5C842)", color: "#09090C" }}>
               <IoRefresh size={16} />
-              {order.payment_status === "pending" ? "PAY WITH WIPAY" : "RETRY WITH WIPAY"}
+              {order.payment_status === "pending" ? "COMPLETE PAYMENT" : "RETRY PAYMENT"}
             </button>
           </div>
         )}

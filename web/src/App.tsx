@@ -51,7 +51,7 @@ function AppInner() {
       <div style={{ width: 32, height: 32, border: "2px solid rgba(228,161,43,0.2)", borderTopColor: "#E4A12B", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
     </div>
   );
-  // Payment result pages are always accessible (user may return from WiPay without a fresh session)
+  // Payment result pages are always accessible (user may return from PayPal without a fresh session)
   const isPaymentResultRoute = location.pathname.startsWith("/payment-success") ||
     location.pathname.startsWith("/payment-failed") ||
     location.pathname.startsWith("/payment-cancelled") ||
@@ -81,7 +81,7 @@ function AppInner() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/contact-support" element={<ContactSupport />} />
 
-        {/* Payment result screens — hyphen versions (WiPay/gateway redirects here) */}
+        {/* Payment result screens — PayPal redirects here after approval/cancel */}
         <Route path="/payment-success" element={<PaymentSuccess />} />
         <Route path="/payment-failed" element={<PaymentFailed />} />
         <Route path="/payment-cancelled" element={<PaymentCancelled />} />

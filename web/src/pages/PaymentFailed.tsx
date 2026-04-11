@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { IoCloseCircle, IoRefresh, IoCart, IoHome } from "react-icons/io5";
+import { IoCloseCircle, IoCart, IoHome } from "react-icons/io5";
 import { supabase } from "@/lib/supabase";
 
 const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
-const WIPAY_PAYMENT_LINK = import.meta.env.VITE_WIPAY_PAYMENT_LINK || "";
 
 export function PaymentFailed() {
   const [searchParams] = useSearchParams();
@@ -31,22 +30,12 @@ export function PaymentFailed() {
 
         if (error && error.code !== "PGRST204" && error.code !== "42703") {
           console.error("[payment-failed] Failed to update order:", error);
-        } else if (error) {
-          console.warn("[payment-failed] Payment columns missing — run supabase-payment-migration.sql");
         }
       } catch (err) {
         console.error("[payment-failed] Unexpected error:", err);
       }
     }
     setUpdating(false);
-  };
-
-  const handleRetry = () => {
-    if (WIPAY_PAYMENT_LINK) {
-      window.location.href = WIPAY_PAYMENT_LINK;
-    } else {
-      navigate("/checkout");
-    }
   };
 
   if (updating) {
@@ -79,7 +68,7 @@ export function PaymentFailed() {
         <div className="w-full rounded-2xl p-4" style={{ background: "rgba(220,53,69,0.06)", border: "1px solid rgba(220,53,69,0.2)" }}>
           <p className="font-inter text-sm text-white font-semibold mb-1">Your order is saved</p>
           <p className="font-inter text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.45)" }}>
-            Don't worry — your order details are saved in our system. You can retry the payment or return to checkout to make changes.
+            Don't worry — your order details are saved. Go back to checkout to try again or choose Cash on Delivery.
           </p>
           {reason && (
             <p className="font-inter text-xs mt-2" style={{ color: "rgba(220,53,69,0.6)" }}>
@@ -94,26 +83,11 @@ export function PaymentFailed() {
         </div>
 
         <div className="w-full flex flex-col gap-3">
-          {WIPAY_PAYMENT_LINK ? (
-            <button onClick={handleRetry}
-              className="w-full py-4 rounded-2xl font-inter font-bold text-sm tracking-widest press-active flex items-center justify-center gap-2"
-              style={{ background: "linear-gradient(135deg, #D4901A, #F5C842)", color: "#09090C" }}>
-              <IoRefresh size={18} />
-              RETRY WITH WIPAY
-            </button>
-          ) : (
-            <button onClick={() => navigate("/checkout")}
-              className="w-full py-4 rounded-2xl font-inter font-bold text-sm tracking-widest press-active flex items-center justify-center gap-2"
-              style={{ background: "linear-gradient(135deg, #D4901A, #F5C842)", color: "#09090C" }}>
-              <IoCart size={18} />
-              BACK TO CHECKOUT
-            </button>
-          )}
-          <button onClick={() => navigate("/cart")}
-            className="w-full py-3 rounded-2xl font-inter text-sm font-semibold press-active flex items-center justify-center gap-2"
-            style={{ background: "rgba(228,161,43,0.08)", border: "1px solid rgba(228,161,43,0.2)", color: "#E4A12B" }}>
-            <IoCart size={16} />
-            Back to Cart
+          <button onClick={() => navigate("/checkout")}
+            className="w-full py-4 rounded-2xl font-inter font-bold text-sm tracking-widest press-active flex items-center justify-center gap-2"
+            style={{ background: "linear-gradient(135deg, #D4901A, #F5C842)", color: "#09090C" }}>
+            <IoCart size={18} />
+            BACK TO CHECKOUT
           </button>
           {orderId && (
             <button onClick={() => navigate(`/order-tracking/${orderId}`)}

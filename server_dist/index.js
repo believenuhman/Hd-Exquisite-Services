@@ -5,156 +5,131 @@ import express from "express";
 import { createServer } from "node:http";
 
 // server/payment.ts
-import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
-var GATEWAY = process.env.PAYMENT_GATEWAY ?? "wipay";
-var STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? "";
-var STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET ?? "";
-var SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "";
-var SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
-var WIPAY_ACCOUNT_NUMBER = process.env.WIPAY_ACCOUNT_NUMBER ?? "1";
-var WIPAY_API_KEY = process.env.WIPAY_API_KEY ?? "123";
-var WIPAY_COUNTRY_CODE = (process.env.WIPAY_COUNTRY_CODE ?? "TT").toUpperCase();
-var WIPAY_ENVIRONMENT = process.env.WIPAY_ENVIRONMENT ?? "sandbox";
-var WIPAY_FEE_STRUCTURE = process.env.WIPAY_FEE_STRUCTURE ?? "customer_pay";
+var SUPABASE_URL = process.env.VITE_SUPABASE_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "";
+var SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? "";
 function getSupabaseAdmin() {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) throw new Error("Supabase credentials not configured");
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY)
+    throw new Error("Supabase credentials not configured (VITE_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)");
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 }
-function isStripeMode() {
-  return (GATEWAY === "stripe" || Boolean(STRIPE_SECRET_KEY)) && Boolean(STRIPE_SECRET_KEY);
+var PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID ?? "";
+var PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET ?? "";
+var PAYPAL_ENV = (process.env.PAYPAL_ENV ?? "sandbox").toLowerCase();
+function getPayPalBase() {
+  return PAYPAL_ENV === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";
 }
-function isWiPayMode() {
-  return GATEWAY === "wipay";
+function isPayPalConfigured() {
+  return Boolean(PAYPAL_CLIENT_ID && PAYPAL_CLIENT_SECRET);
 }
-function getWiPayEndpoint() {
-  switch (WIPAY_COUNTRY_CODE) {
-    case "BB":
-      return "https://bb.wipayfinancial.com/plugins/payments/request";
-    case "JM":
-      return "https://jm.wipayfinancial.com/plugins/payments/request";
-    default:
-      return "https://tt.wipayfinancial.com/plugins/payments/request";
+async function getPayPalAccessToken() {
+  if (!isPayPalConfigured()) {
+    throw new Error("PayPal is not configured. Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET.");
   }
+  const credentials = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`).toString("base64");
+  const res = await fetch(`${getPayPalBase()}/v1/oauth2/token`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Basic ${credentials}`,
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: "grant_type=client_credentials"
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`PayPal token request failed (${res.status}): ${body}`);
+  }
+  const data = await res.json();
+  return data.access_token;
 }
-function verifyWiPayHash(transactionId, total, hash) {
-  const expected = createHash("md5").update(`${transactionId}${total}${WIPAY_API_KEY}`).digest("hex");
-  return expected === hash;
-}
-async function createWiPaySession(req) {
-  const total = Number(req.amount).toFixed(2);
-  const origin = new URL(req.successUrl).origin;
-  const responseUrl = `${origin}/api/payment/wipay/return/${req.orderId}`;
-  const endpoint = getWiPayEndpoint();
-  const formParams = {
-    account_number: WIPAY_ACCOUNT_NUMBER,
-    country_code: WIPAY_COUNTRY_CODE,
-    currency: req.currency.toUpperCase(),
-    environment: WIPAY_ENVIRONMENT,
-    fee_structure: WIPAY_FEE_STRUCTURE,
-    method: "credit_card",
-    total,
-    order_id: req.orderId,
-    origin: "HD_Xquisite_Liquors",
-    response_url: responseUrl
-  };
-  console.log("[wipay] Preparing browser-POST form:", endpoint, { orderId: req.orderId, total, environment: WIPAY_ENVIRONMENT });
-  return {
-    url: endpoint,
-    reference: `wipay_pending_${req.orderId}`,
-    gateway: "wipay",
-    formParams
-  };
-}
-async function createStripeSession(req) {
-  const Stripe = (await import("stripe")).default;
-  const stripe = new Stripe(STRIPE_SECRET_KEY);
-  const amountInCents = Math.round(req.amount * 100);
-  const session = await stripe.checkout.sessions.create({
-    payment_method_types: ["card"],
-    mode: "payment",
-    line_items: [
+async function createPayPalOrder(req) {
+  const accessToken = await getPayPalAccessToken();
+  const value = Number(req.amount).toFixed(2);
+  const body = {
+    intent: "CAPTURE",
+    purchase_units: [
       {
-        price_data: {
-          currency: req.currency.toLowerCase(),
-          product_data: { name: req.description },
-          unit_amount: amountInCents
-        },
-        quantity: 1
+        reference_id: req.orderId,
+        description: req.description || "HD Xquisite Liquors Order",
+        amount: {
+          currency_code: req.currency.toUpperCase(),
+          value
+        }
       }
     ],
-    metadata: { orderId: req.orderId },
-    success_url: `${req.successUrl}?orderId=${req.orderId}&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${req.cancelUrl}?orderId=${req.orderId}`
+    payment_source: {
+      paypal: {
+        experience_context: {
+          payment_method_preference: "IMMEDIATE_PAYMENT_REQUIRED",
+          landing_page: "LOGIN",
+          user_action: "PAY_NOW",
+          return_url: req.returnUrl,
+          cancel_url: req.cancelUrl
+        }
+      }
+    }
+  };
+  const res = await fetch(`${getPayPalBase()}/v2/checkout/orders`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      "PayPal-Request-Id": `hd-${req.orderId}-${Date.now()}`
+    },
+    body: JSON.stringify(body)
   });
-  return {
-    url: session.url ?? req.successUrl,
-    reference: session.id,
-    gateway: "stripe"
-  };
-}
-async function createMockSession(req) {
-  const reference = `mock_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const origin = new URL(req.successUrl).origin;
-  return {
-    url: `${origin}/payment/mock/${req.orderId}?ref=${reference}&success=${encodeURIComponent(req.successUrl)}&cancel=${encodeURIComponent(req.cancelUrl)}`,
-    reference,
-    gateway: "mock"
-  };
-}
-async function createPaymentSession(req) {
-  if (isWiPayMode()) {
-    return createWiPaySession(req);
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`PayPal create order failed (${res.status}): ${err}`);
   }
-  if (isStripeMode()) {
-    return createStripeSession(req);
+  const data = await res.json();
+  const approvalUrl = data.links.find((l) => l.rel === "payer-action" || l.rel === "approve")?.href ?? "";
+  if (!approvalUrl) {
+    throw new Error("PayPal did not return an approval URL");
   }
-  return createMockSession(req);
+  console.log(`[paypal] Order created: ${data.id} \u2192 ${approvalUrl}`);
+  return { paypalOrderId: data.id, approvalUrl };
 }
-async function verifyStripeSession(sessionId) {
-  const Stripe = (await import("stripe")).default;
-  const stripe = new Stripe(STRIPE_SECRET_KEY);
-  const session = await stripe.checkout.sessions.retrieve(sessionId);
-  return {
-    paid: session.payment_status === "paid",
-    reference: session.id
-  };
-}
-async function verifyPayment(orderId, reference, gateway) {
-  if (gateway === "stripe" && isStripeMode()) {
-    const { paid, reference: ref } = await verifyStripeSession(reference);
-    if (paid) {
-      await updateOrderPaid(orderId, ref, "stripe");
+async function capturePayPalOrder(paypalOrderId) {
+  const accessToken = await getPayPalAccessToken();
+  const res = await fetch(`${getPayPalBase()}/v2/checkout/orders/${paypalOrderId}/capture`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${accessToken}`,
+      "Content-Type": "application/json"
     }
-    return { success: true, paid, reference: ref, gateway: "stripe" };
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`PayPal capture failed (${res.status}): ${err}`);
   }
-  if (gateway === "wipay") {
-    try {
-      const supabase = getSupabaseAdmin();
-      const { data: order } = await supabase.from("orders").select("payment_status, payment_reference").eq("id", orderId).single();
-      const paid = order?.payment_status === "paid";
-      return { success: true, paid, reference: order?.payment_reference ?? reference, gateway: "wipay" };
-    } catch {
-      return { success: true, paid: true, reference, gateway: "wipay" };
-    }
-  }
-  if (gateway === "mock" || reference.startsWith("mock_")) {
-    await updateOrderPaid(orderId, reference, "mock");
-    return { success: true, paid: true, reference, gateway: "mock" };
-  }
-  return { success: false, paid: false, reference, gateway };
+  const data = await res.json();
+  const capture = data.purchase_units?.[0]?.payments?.captures?.[0];
+  const captureId = capture?.id ?? paypalOrderId;
+  const success = data.status === "COMPLETED" || capture?.status === "COMPLETED";
+  console.log(`[paypal] Captured order ${paypalOrderId}: status=${data.status}, captureId=${captureId}`);
+  return { success, captureId, status: data.status };
 }
 async function updateOrderPaid(orderId, reference, gateway) {
   try {
     const supabase = getSupabaseAdmin();
-    await supabase.from("orders").update({
+    const { error } = await supabase.from("orders").update({
       payment_status: "paid",
       payment_reference: reference,
       gateway_name: gateway,
       paid_at: (/* @__PURE__ */ new Date()).toISOString()
     }).eq("id", orderId);
+    if (error) console.error("[payment] updateOrderPaid error:", error);
   } catch (err) {
     console.error("[payment] Failed to update order paid status:", err);
+  }
+}
+async function updateOrderCancelled(orderId) {
+  try {
+    const supabase = getSupabaseAdmin();
+    await supabase.from("orders").update({ payment_status: "cancelled" }).eq("id", orderId);
+  } catch (err) {
+    console.error("[payment] Failed to update order cancelled status:", err);
   }
 }
 async function updateOrderFailed(orderId) {
@@ -165,134 +140,85 @@ async function updateOrderFailed(orderId) {
     console.error("[payment] Failed to update order failed status:", err);
   }
 }
-async function handleStripeWebhook(rawBody, signature) {
-  if (!isStripeMode() || !STRIPE_WEBHOOK_SECRET) {
-    return { handled: false };
-  }
-  const Stripe = (await import("stripe")).default;
-  const stripe = new Stripe(STRIPE_SECRET_KEY);
-  let event;
-  try {
-    event = stripe.webhooks.constructEvent(rawBody, signature, STRIPE_WEBHOOK_SECRET);
-  } catch {
-    throw new Error("Webhook signature verification failed");
-  }
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object;
-    const orderId = session.metadata?.orderId;
-    if (orderId && session.payment_status === "paid") {
-      await updateOrderPaid(orderId, session.id, "stripe");
-      return { handled: true, orderId };
-    }
-  }
-  if (event.type === "checkout.session.expired" || event.type === "payment_intent.payment_failed") {
-    const session = event.data.object;
-    const orderId = session.metadata?.orderId;
-    if (orderId) {
-      await updateOrderFailed(orderId);
-      return { handled: true, orderId };
-    }
-  }
-  return { handled: true };
-}
 
 // server/routes.ts
-async function handleWiPayReturn(orderId, params, req, res) {
-  const { status, hash, transaction_id: transactionId, reasonDescription } = params;
-  console.log("[wipay return]", { orderId, status, transactionId, hash, reasonDescription });
-  const proto = req.headers["x-forwarded-proto"] ?? req.protocol ?? "https";
-  const host = req.headers["x-forwarded-host"] ?? req.headers.host ?? "localhost";
-  const frontendOrigin = `${proto}://${host}`;
-  if (!orderId) {
-    return res.redirect(`${frontendOrigin}/payment/failed?reason=missing_order`);
-  }
-  try {
-    const supabase = getSupabaseAdmin();
-    const { data: order } = await supabase.from("orders").select("total").eq("id", orderId).single();
-    const total = order ? Number(order.total).toFixed(2) : "0.00";
-    const hashValid = transactionId && hash ? verifyWiPayHash(transactionId, total, hash) : false;
-    console.log("[wipay return] hash check:", { total, hashValid });
-    if (status === "success" && hashValid) {
-      await updateOrderPaid(orderId, transactionId, "wipay");
-      return res.redirect(
-        `${frontendOrigin}/payment/success?orderId=${encodeURIComponent(orderId)}&ref=${encodeURIComponent(transactionId)}&gateway=wipay`
-      );
-    } else {
-      await updateOrderFailed(orderId);
-      const reason = encodeURIComponent(
-        reasonDescription || (hashValid ? "Payment failed" : "Invalid payment response")
-      );
-      return res.redirect(`${frontendOrigin}/payment/failed?orderId=${encodeURIComponent(orderId)}&reason=${reason}`);
-    }
-  } catch (err) {
-    console.error("[wipay return] Error:", err);
-    return res.redirect(`${frontendOrigin}/payment/failed?orderId=${encodeURIComponent(orderId)}&reason=server_error`);
-  }
-}
 async function registerRoutes(app2) {
-  app2.post("/api/payment/create-session", async (req, res) => {
+  app2.get("/api/health", (_req, res) => {
+    res.json({
+      status: "ok",
+      time: (/* @__PURE__ */ new Date()).toISOString(),
+      paypal: isPayPalConfigured() ? "configured" : "not configured"
+    });
+  });
+  app2.post("/api/paypal/create-order", async (req, res) => {
     try {
       const { orderId, amount, currency, description, origin } = req.body;
       if (!orderId || !amount || !currency || !origin) {
-        return res.status(400).json({ error: "Missing required fields: orderId, amount, currency, origin" });
+        return res.status(400).json({
+          error: "Missing required fields: orderId, amount, currency, origin"
+        });
       }
-      const successUrl = `${origin}/payment/success`;
-      const cancelUrl = `${origin}/payment/cancelled`;
-      const session = await createPaymentSession({
+      if (!isPayPalConfigured()) {
+        return res.status(503).json({
+          error: "PayPal is not configured on this server. Contact the store owner."
+        });
+      }
+      const returnUrl = `${origin}/payment-success`;
+      const cancelUrl = `${origin}/payment-cancelled`;
+      const result = await createPayPalOrder({
         orderId,
         amount,
         currency,
         description: description || "HD Xquisite Liquors Order",
-        successUrl,
+        returnUrl,
         cancelUrl
       });
-      return res.json({ url: session.url, reference: session.reference, gateway: session.gateway, formParams: session.formParams });
+      return res.json({
+        paypalOrderId: result.paypalOrderId,
+        approvalUrl: result.approvalUrl
+      });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Payment session creation failed";
-      console.error("[/api/payment/create-session]", err);
+      const message = err instanceof Error ? err.message : "Failed to create PayPal order";
+      console.error("[POST /api/paypal/create-order]", err);
       return res.status(500).json({ error: message });
     }
   });
-  app2.post("/api/payment/verify", async (req, res) => {
+  app2.post("/api/paypal/capture-order", async (req, res) => {
     try {
-      const { orderId, reference, gateway } = req.body;
-      if (!orderId || !reference) {
-        return res.status(400).json({ error: "Missing orderId or reference" });
+      const { paypalOrderId, orderId } = req.body;
+      if (!paypalOrderId || !orderId) {
+        return res.status(400).json({
+          error: "Missing required fields: paypalOrderId, orderId"
+        });
       }
-      const result = await verifyPayment(orderId, reference, gateway ?? "mock");
-      return res.json(result);
+      if (!isPayPalConfigured()) {
+        return res.status(503).json({ error: "PayPal is not configured" });
+      }
+      const result = await capturePayPalOrder(paypalOrderId);
+      if (result.success) {
+        await updateOrderPaid(orderId, result.captureId, "paypal");
+        return res.json({ success: true, captureId: result.captureId, status: result.status });
+      } else {
+        await updateOrderFailed(orderId);
+        return res.status(402).json({ success: false, status: result.status, error: "Payment capture was not completed" });
+      }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Payment verification failed";
-      console.error("[/api/payment/verify]", err);
+      const message = err instanceof Error ? err.message : "Failed to capture PayPal order";
+      console.error("[POST /api/paypal/capture-order]", err);
       return res.status(500).json({ error: message });
     }
   });
-  app2.get("/api/payment/wipay/return/:orderId", async (req, res) => {
-    const orderId = req.params.orderId ?? "";
-    const params = req.query;
-    return handleWiPayReturn(orderId, params, req, res);
-  });
-  app2.post("/api/payment/wipay/return/:orderId", async (req, res) => {
-    const orderId = req.params.orderId ?? "";
-    const params = { ...req.query, ...req.body };
-    return handleWiPayReturn(orderId, params, req, res);
-  });
-  app2.post("/api/payment/webhook", async (req, res) => {
+  app2.post("/api/paypal/cancel-order", async (req, res) => {
     try {
-      const sig = req.headers["stripe-signature"];
-      if (!sig) return res.status(400).json({ error: "Missing stripe-signature header" });
-      const rawBody = req.rawBody;
-      if (!rawBody) return res.status(400).json({ error: "Missing raw body" });
-      const result = await handleStripeWebhook(rawBody, sig);
-      return res.json({ received: true, handled: result.handled, orderId: result.orderId });
+      const { orderId } = req.body;
+      if (!orderId) return res.status(400).json({ error: "Missing orderId" });
+      await updateOrderCancelled(orderId);
+      return res.json({ success: true });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Webhook processing failed";
-      console.error("[/api/payment/webhook]", err);
-      return res.status(400).json({ error: message });
+      const message = err instanceof Error ? err.message : "Failed to cancel order";
+      console.error("[POST /api/paypal/cancel-order]", err);
+      return res.status(500).json({ error: message });
     }
-  });
-  app2.get("/api/health", (_req, res) => {
-    res.json({ status: "ok", time: (/* @__PURE__ */ new Date()).toISOString() });
   });
   const httpServer = createServer(app2);
   return httpServer;

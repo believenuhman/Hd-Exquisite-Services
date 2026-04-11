@@ -1,40 +1,37 @@
 import React, { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { IoCheckmarkCircle, IoReceiptOutline, IoHome } from "react-icons/io5";
-import { supabase } from "@/lib/supabase";
+import { IoCheckmarkCircle, IoReceiptOutline, IoHome, IoAlertCircle } from "react-icons/io5";
 
 const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
 
 type Status = "loading" | "confirmed" | "error";
 
+function getApiBase(): string {
+  if (import.meta.env.DEV) return "http://localhost:3000";
+  return window.location.origin;
+}
+
 export function PaymentSuccess() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  // WiPay returns: status, transaction_id, total (as GET params)
-  // Fallback: orderId passed as a query param from custom return URL
-  const wipayStatus      = searchParams.get("status")         ?? "";
-  const transactionId    = searchParams.get("transaction_id") ?? searchParams.get("hash") ?? "";
-  const queryOrderId     = searchParams.get("orderId")        ?? "";
+  // PayPal appends ?token=PAYPAL_ORDER_ID&PayerID=PAYER_ID to the return URL
+  const paypalToken  = searchParams.get("token")   ?? "";
+  const queryOrderId = searchParams.get("orderId") ?? ""; // fallback
 
-  const [status, setStatus]     = useState<Status>("loading");
-  const [orderId, setOrderId]   = useState<string>("");
-  const [paymentRef, setPaymentRef] = useState<string>("");
+  const [status, setStatus]         = useState<Status>("loading");
+  const [orderId, setOrderId]       = useState<string>("");
+  const [captureId, setCaptureId]   = useState<string>("");
+
+  useEffect(() => {
+    confirmPayment();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const confirmPayment = async () => {
-    // If WiPay returned a non-success status, redirect to appropriate page
-    if (wipayStatus && wipayStatus.toLowerCase() !== "success") {
-      if (wipayStatus.toLowerCase() === "cancelled" || wipayStatus.toLowerCase() === "cancel") {
-        navigate("/payment-cancelled", { replace: true });
-        return;
-      }
-      navigate("/payment-failed", { replace: true });
-      return;
-    }
-
-    // Recover the order ID: prefer localStorage, fall back to query param
-    const storedId    = localStorage.getItem(PENDING_ORDER_KEY) ?? "";
-    const resolvedId  = storedId || queryOrderId;
+    // Recover Supabase order ID
+    const storedId   = localStorage.getItem(PENDING_ORDER_KEY) ?? "";
+    const resolvedId = storedId || queryOrderId;
 
     if (!resolvedId) {
       setStatus("error");
@@ -43,45 +40,47 @@ export function PaymentSuccess() {
 
     setOrderId(resolvedId);
 
-    // Build payment reference from WiPay transaction_id if available
-    const ref = transactionId || `wipay_${Date.now()}`;
-    setPaymentRef(ref);
+    // If there's no PayPal token we can't capture — show fallback success
+    if (!paypalToken) {
+      // Still clear the pending key
+      localStorage.removeItem(PENDING_ORDER_KEY);
+      setStatus("confirmed");
+      return;
+    }
 
     try {
-      let { error } = await supabase.from("orders").update({
-        payment_status:    "paid",
-        payment_reference: ref,
-        gateway_name:      "wipay",
-        paid_at:           new Date().toISOString(),
-      }).eq("id", resolvedId);
+      // Call our backend to capture the PayPal payment and mark the order paid
+      const res = await fetch(`${getApiBase()}/api/paypal/capture-order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paypalOrderId: paypalToken, orderId: resolvedId }),
+      });
 
-      // If payment columns don't exist yet (migration not applied), try status only
-      if (error?.code === "PGRST204" || error?.code === "42703") {
-        console.warn("[payment-success] Payment columns missing — run supabase-payment-migration.sql");
-        ({ error } = await supabase.from("orders").update({
-          status: "delivered",
-        }).eq("id", resolvedId));
+      const data = await res.json() as { success?: boolean; captureId?: string; error?: string };
+
+      if (res.ok && data.success) {
+        setCaptureId(data.captureId ?? paypalToken);
+      } else {
+        // Capture might have already happened or order is already paid — treat as success
+        console.warn("[payment-success] capture response:", data);
+        setCaptureId(paypalToken);
       }
-
-      if (error) throw error;
 
       localStorage.removeItem(PENDING_ORDER_KEY);
       setStatus("confirmed");
     } catch (err) {
-      console.error("[payment-success] Failed to update order:", err);
-      // Show success anyway — the payment happened on WiPay's end
+      console.error("[payment-success] Failed to capture PayPal order:", err);
+      // Show success UI anyway — the user approved it on PayPal's end.
+      // A webhook or retry can confirm it later.
       localStorage.removeItem(PENDING_ORDER_KEY);
       setStatus("confirmed");
     }
   };
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { confirmPayment(); }, []);
-
   if (status === "loading") {
     return (
       <div className="fixed inset-0 flex flex-col items-center justify-center gap-4" style={{ background: "#09090C" }}>
-        <div style={{ width: 40, height: 40, border: "2px solid rgba(228,161,43,0.2)", borderTopColor: "#E4A12B", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+        <div style={{ width: 40, height: 40, border: "2px solid rgba(0,112,186,0.2)", borderTopColor: "#0070BA", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
         <p className="font-inter text-white">Confirming your payment…</p>
         <p className="font-inter text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>Please wait a moment</p>
       </div>
@@ -92,12 +91,12 @@ export function PaymentSuccess() {
     return (
       <div className="fixed inset-0 flex flex-col items-center justify-center gap-5 px-6" style={{ background: "#09090C" }}>
         <div className="flex items-center justify-center rounded-full" style={{ width: 80, height: 80, background: "rgba(228,161,43,0.08)", border: "1px solid rgba(228,161,43,0.2)" }}>
-          <IoCheckmarkCircle size={42} color="#E4A12B" />
+          <IoAlertCircle size={42} color="#E4A12B" />
         </div>
         <div className="text-center">
           <p className="font-playfair text-2xl font-bold text-white mb-2">Payment Received</p>
           <p className="font-cormorant text-lg" style={{ color: "rgba(255,255,255,0.55)" }}>
-            Your payment was processed. Check your orders for the latest status.
+            Your payment may have been processed. Check your orders for the latest status.
           </p>
         </div>
         <div className="w-full flex flex-col gap-3">
@@ -122,7 +121,7 @@ export function PaymentSuccess() {
     <div className="fixed inset-0 flex flex-col" style={{ background: "#09090C" }}>
       <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6">
 
-        {/* Success icon with glow */}
+        {/* Success icon */}
         <div className="relative flex items-center justify-center">
           <div className="absolute" style={{ width: 120, height: 120, borderRadius: "50%", background: "radial-gradient(circle, rgba(76,175,80,0.15) 0%, transparent 70%)" }} />
           <div className="flex items-center justify-center rounded-full" style={{ width: 96, height: 96, background: "rgba(76,175,80,0.1)", border: "2px solid rgba(76,175,80,0.3)" }}>
@@ -137,10 +136,10 @@ export function PaymentSuccess() {
           </p>
         </div>
 
-        {paymentRef && (
+        {captureId && (
           <div className="w-full rounded-2xl p-4 text-center" style={{ background: "linear-gradient(145deg, #1C1828, #121212)", border: "1px solid rgba(76,175,80,0.15)" }}>
-            <p className="font-inter text-xs mb-1" style={{ color: "rgba(255,255,255,0.35)" }}>WiPay Reference</p>
-            <p className="font-inter text-sm font-bold text-white tracking-wider break-all">{paymentRef}</p>
+            <p className="font-inter text-xs mb-1" style={{ color: "rgba(255,255,255,0.35)" }}>PayPal Transaction ID</p>
+            <p className="font-inter text-sm font-bold text-white tracking-wider break-all">{captureId}</p>
           </div>
         )}
 

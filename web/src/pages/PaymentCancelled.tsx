@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { IoCloseCircleOutline, IoRefresh, IoChevronBack, IoHome } from "react-icons/io5";
-import { supabase } from "@/lib/supabase";
+import { IoCloseCircleOutline, IoChevronBack, IoHome } from "react-icons/io5";
 
 const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
-const WIPAY_PAYMENT_LINK = import.meta.env.VITE_WIPAY_PAYMENT_LINK || "";
+
+function getApiBase(): string {
+  if (import.meta.env.DEV) return "http://localhost:3000";
+  return window.location.origin;
+}
 
 export function PaymentCancelled() {
   const [searchParams] = useSearchParams();
@@ -23,30 +26,30 @@ export function PaymentCancelled() {
 
     if (resolvedId) {
       try {
-        const { error } = await supabase
-          .from("orders")
-          .update({ payment_status: "cancelled" })
-          .eq("id", resolvedId);
-
-        if (error && error.code !== "PGRST204" && error.code !== "42703") {
-          console.error("[payment-cancelled] Failed to update order:", error);
-        } else if (error) {
-          console.warn("[payment-cancelled] Payment columns missing — run supabase-payment-migration.sql");
-        }
+        // Notify the backend to mark the order as cancelled
+        await fetch(`${getApiBase()}/api/paypal/cancel-order`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId: resolvedId }),
+        });
       } catch (err) {
-        console.error("[payment-cancelled] Unexpected error:", err);
+        console.warn("[payment-cancelled] Could not notify backend:", err);
+      }
+      // Also try to update directly via Supabase as a fallback
+      try {
+        const { createClient } = await import("@supabase/supabase-js");
+        const url = import.meta.env.VITE_SUPABASE_URL ?? import.meta.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
+        const key = import.meta.env.VITE_SUPABASE_ANON_KEY ?? import.meta.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
+        if (url && key) {
+          const client = createClient(url, key);
+          await client.from("orders").update({ payment_status: "cancelled" }).eq("id", resolvedId);
+        }
+      } catch {
+        // Best-effort only
       }
     }
-    // Keep pending key — retry without re-filling the form
+    // Keep pending key — user can retry from checkout
     setUpdating(false);
-  };
-
-  const handleRetryPayment = () => {
-    if (WIPAY_PAYMENT_LINK) {
-      window.location.href = WIPAY_PAYMENT_LINK;
-    } else {
-      navigate("/checkout");
-    }
   };
 
   if (updating) {
@@ -79,7 +82,7 @@ export function PaymentCancelled() {
         <div className="w-full rounded-2xl p-4" style={{ background: "linear-gradient(145deg, #1C1828, #121212)", border: "1px solid rgba(228,161,43,0.08)" }}>
           <p className="font-inter text-sm text-white font-semibold mb-1">Your order is saved</p>
           <p className="font-inter text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.45)" }}>
-            Your order details are still in our system. You can complete the payment now, go back to checkout to change your payment method, or come back later.
+            Your order details are still in our system. Head back to checkout to try again or choose Cash on Delivery.
           </p>
           {orderId && (
             <p className="font-inter text-xs mt-3 font-semibold tracking-wide" style={{ color: "rgba(228,161,43,0.5)" }}>
@@ -89,17 +92,11 @@ export function PaymentCancelled() {
         </div>
 
         <div className="w-full flex flex-col gap-3">
-          <button onClick={handleRetryPayment}
+          <button onClick={() => navigate("/checkout")}
             className="w-full py-4 rounded-2xl font-inter font-bold text-sm tracking-widest press-active flex items-center justify-center gap-2"
             style={{ background: "linear-gradient(135deg, #D4901A, #F5C842)", color: "#09090C" }}>
-            <IoRefresh size={18} />
-            {WIPAY_PAYMENT_LINK ? "COMPLETE WITH WIPAY" : "BACK TO CHECKOUT"}
-          </button>
-          <button onClick={() => navigate("/checkout")}
-            className="w-full py-3 rounded-2xl font-inter text-sm font-semibold press-active flex items-center justify-center gap-2"
-            style={{ background: "rgba(228,161,43,0.08)", border: "1px solid rgba(228,161,43,0.2)", color: "#E4A12B" }}>
-            <IoChevronBack size={16} />
-            Back to Checkout
+            <IoChevronBack size={18} />
+            BACK TO CHECKOUT
           </button>
           {orderId && (
             <button onClick={() => navigate(`/order-tracking/${orderId}`)}
