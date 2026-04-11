@@ -15,6 +15,10 @@ localPort = 3000
 externalPort = 3002
 
 [[ports]]
+localPort = 3001
+externalPort = 3003
+
+[[ports]]
 localPort = 5000
 externalPort = 5000
 
@@ -86,19 +90,19 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "sh -c 'npm run server:build && PORT=5001 node server_dist/index.js & sleep 2 && cd web && npm install --legacy-peer-deps && npx vite --host 0.0.0.0 --port 3000'"
-waitForPort = 3000
+args = "sh -c 'npm run server:build && PORT=3001 node server_dist/index.js & sleep 2 && cd web && npm install --legacy-peer-deps && npx vite --host 0.0.0.0 --port 5000'"
+waitForPort = 5000
 
 [[workflows.workflow]]
 name = "Start Backend"
 author = "agent"
 
-[workflows.workflow.metadata]
-outputType = "console"
-
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "echo 'Backend handled by Start application workflow'"
+args = "echo 'Backend runs inside Start application workflow on port 3001'"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [[workflows.workflow]]
 name = "Start Frontend"
@@ -106,7 +110,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "echo 'Frontend handled by Start application workflow'"
+args = "echo 'Web app runs inside Start application workflow on port 5000'"
 
 [workflows.workflow.metadata]
 outputType = "console"

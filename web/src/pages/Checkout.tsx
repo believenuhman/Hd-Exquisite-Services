@@ -11,11 +11,8 @@ const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
 
 type PaymentMethod = "cash_on_delivery" | "online_card";
 
-// Derive the API base from the current page origin so it works on any domain.
 function getApiBase(): string {
-  // Backend runs on port 3000 in dev; same origin in production.
-  if (import.meta.env.DEV) return "http://localhost:3000";
-  return window.location.origin;
+  return "";
 }
 
 export function Checkout() {

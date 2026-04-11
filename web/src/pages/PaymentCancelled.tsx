@@ -5,8 +5,7 @@ import { IoCloseCircleOutline, IoChevronBack, IoHome } from "react-icons/io5";
 const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
 
 function getApiBase(): string {
-  if (import.meta.env.DEV) return "http://localhost:3000";
-  return window.location.origin;
+  return "";
 }
 
 export function PaymentCancelled() {

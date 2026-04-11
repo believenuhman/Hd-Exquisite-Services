@@ -7,8 +7,7 @@ const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
 type Status = "loading" | "confirmed" | "error";
 
 function getApiBase(): string {
-  if (import.meta.env.DEV) return "http://localhost:3000";
-  return window.location.origin;
+  return "";
 }
 
 export function PaymentSuccess() {

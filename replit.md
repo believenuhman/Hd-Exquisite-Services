@@ -4,8 +4,8 @@ A premium liquor delivery web app (React + Vite + Tailwind) built for Median web
 
 ## Architecture
 
-- **Web App (Vite)**: React + Vite + Tailwind CSS, mobile-first design — port 5000 (`web/`) — PRIMARY APP
-- **Backend (Express)**: Payment API + static file serving — port 3000 (dev), PORT env var (prod)
+- **Web App (Vite)**: React + Vite + Tailwind CSS, mobile-first design — port 5000 (`web/`) — PRIMARY APP (Replit Preview)
+- **Backend (Express)**: Payment API + static file serving — port 3001 (dev), PORT env var (prod)
 - **Database**: Supabase (PostgreSQL)
 - **Auth**: Supabase Auth with localStorage session persistence
 - **State**: React Context (CartContext, AuthContext, AgeGateContext, AppSettingsContext)
@@ -19,7 +19,7 @@ A premium liquor delivery web app (React + Vite + Tailwind) built for Median web
 - **Styling**: Tailwind CSS with custom font/color tokens + inline `index.css` animations
 - **Build**: Vite 5 — `cd web && npm run build` produces `web/dist/`
 - **PWA**: `web/public/manifest.json` + icons — enables "Add to Home Screen" on mobile
-- **Workflows**: "Start Web App" (port 5000, webview) + "Start Backend" (port 3000, console)
+- **Workflow**: "Start application" (combined — Vite webview on port 5000, Express backend on port 3001)
 - **Pages**: AgeGate → Welcome → Login/Signup/ForgotPassword → Home → Search → ProductDetail → Cart → Checkout → Profile → Orders → OrderTracking → Settings → ContactSupport → **PaymentMock** → **PaymentSuccess** → **PaymentFailed** → **PaymentCancelled**
 - **Components**: SplashScreen, BottomNav (5 tabs), DrawerMenu, ProductCard
 
