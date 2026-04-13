@@ -15,9 +15,9 @@ function getSupabaseAdmin() {
     throw new Error("Supabase service role key not configured. Set SUPABASE_SERVICE_ROLE_KEY in Replit Secrets.");
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 }
-var PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID ?? "";
-var PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET ?? "";
-var PAYPAL_ENV = (process.env.PAYPAL_ENV ?? "sandbox").toLowerCase();
+var PAYPAL_CLIENT_ID = (process.env.PAYPAL_CLIENT_ID ?? "").trim();
+var PAYPAL_CLIENT_SECRET = (process.env.PAYPAL_CLIENT_SECRET ?? "").trim();
+var PAYPAL_ENV = (process.env.PAYPAL_ENV ?? "sandbox").toLowerCase().trim();
 function getPayPalBase() {
   return PAYPAL_ENV === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";
 }

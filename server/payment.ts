@@ -15,9 +15,9 @@ export function getSupabaseAdmin() {
 
 // ─── PayPal configuration ─────────────────────────────────────────────────────
 
-const PAYPAL_CLIENT_ID     = process.env.PAYPAL_CLIENT_ID     ?? "";
-const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET ?? "";
-const PAYPAL_ENV           = (process.env.PAYPAL_ENV ?? "sandbox").toLowerCase();
+const PAYPAL_CLIENT_ID     = (process.env.PAYPAL_CLIENT_ID     ?? "").trim();
+const PAYPAL_CLIENT_SECRET = (process.env.PAYPAL_CLIENT_SECRET ?? "").trim();
+const PAYPAL_ENV           = (process.env.PAYPAL_ENV ?? "sandbox").toLowerCase().trim();
 
 export function getPayPalBase(): string {
   return PAYPAL_ENV === "live"
@@ -27,6 +27,26 @@ export function getPayPalBase(): string {
 
 export function isPayPalConfigured(): boolean {
   return Boolean(PAYPAL_CLIENT_ID && PAYPAL_CLIENT_SECRET);
+}
+
+export function getPayPalDiagnostics(): {
+  configured: boolean;
+  environment: string;
+  clientIdLength: number;
+  clientIdPrefix: string;
+  secretLength: number;
+  secretPrefix: string;
+  apiBase: string;
+} {
+  return {
+    configured: isPayPalConfigured(),
+    environment: PAYPAL_ENV,
+    clientIdLength: PAYPAL_CLIENT_ID.length,
+    clientIdPrefix: PAYPAL_CLIENT_ID.slice(0, 7) + "...",
+    secretLength: PAYPAL_CLIENT_SECRET.length,
+    secretPrefix: PAYPAL_CLIENT_SECRET.slice(0, 4) + "...",
+    apiBase: getPayPalBase(),
+  };
 }
 
 // ─── PayPal OAuth ─────────────────────────────────────────────────────────────
