@@ -11,10 +11,6 @@ const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
 
 type PaymentMethod = "cash_on_delivery" | "online_card";
 
-function getApiBase(): string {
-  return "";
-}
-
 export function Checkout() {
   const navigate  = useNavigate();
   const location  = useLocation();
@@ -81,17 +77,11 @@ export function Checkout() {
       gateway_name:   method === "online_card" ? "paypal" : null,
     };
 
-    let res = await supabase
+    const res = await supabase
       .from("orders")
       .insert({ ...baseFields, ...paymentFields })
       .select()
       .single();
-
-    // Graceful fallback if payment columns haven't been migrated yet
-    if (res.error?.code === "PGRST204" || res.error?.code === "42703") {
-      console.warn("[checkout] Payment columns missing — run supabase-payment-migration.sql");
-      res = await supabase.from("orders").insert(baseFields).select().single();
-    }
 
     if (res.error) throw new Error("Failed to create order: " + res.error.message);
 
@@ -133,7 +123,7 @@ export function Checkout() {
 
       // ── PayPal online payment ──────────────────────────────────────────────
       // 1. Ask the backend to create a PayPal order and give us the approval URL
-      const apiRes = await fetch(`${getApiBase()}/api/paypal/create-order`, {
+      const apiRes = await fetch("/api/paypal/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

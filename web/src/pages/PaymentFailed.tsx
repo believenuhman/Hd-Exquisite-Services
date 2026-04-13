@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { IoCloseCircle, IoCart, IoHome } from "react-icons/io5";
-import { supabase } from "@/lib/supabase";
 
 const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
 
@@ -23,16 +22,13 @@ export function PaymentFailed() {
 
     if (resolvedId) {
       try {
-        const { error } = await supabase
-          .from("orders")
-          .update({ payment_status: "failed" })
-          .eq("id", resolvedId);
-
-        if (error && error.code !== "PGRST204" && error.code !== "42703") {
-          console.error("[payment-failed] Failed to update order:", error);
-        }
+        await fetch("/api/paypal/fail-order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId: resolvedId }),
+        });
       } catch (err) {
-        console.error("[payment-failed] Unexpected error:", err);
+        console.error("[payment-failed] Could not notify backend:", err);
       }
     }
     setUpdating(false);
@@ -50,7 +46,6 @@ export function PaymentFailed() {
     <div className="fixed inset-0 flex flex-col" style={{ background: "#09090C" }}>
       <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6">
 
-        {/* Failed icon */}
         <div className="relative flex items-center justify-center">
           <div className="absolute" style={{ width: 120, height: 120, borderRadius: "50%", background: "radial-gradient(circle, rgba(220,53,69,0.12) 0%, transparent 70%)" }} />
           <div className="flex items-center justify-center rounded-full" style={{ width: 96, height: 96, background: "rgba(220,53,69,0.08)", border: "2px solid rgba(220,53,69,0.25)" }}>

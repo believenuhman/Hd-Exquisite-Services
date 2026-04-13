@@ -21,7 +21,6 @@ import { ProductDetail } from "@/pages/ProductDetail";
 import { OrderTracking } from "@/pages/OrderTracking";
 import { Settings } from "@/pages/Settings";
 import { ContactSupport } from "@/pages/ContactSupport";
-import { PaymentMock } from "@/pages/PaymentMock";
 import { PaymentSuccess } from "@/pages/PaymentSuccess";
 import { PaymentFailed } from "@/pages/PaymentFailed";
 import { PaymentCancelled } from "@/pages/PaymentCancelled";
@@ -90,8 +89,6 @@ function AppInner() {
         <Route path="/payment/success" element={<QueryRedirect to="/payment-success" />} />
         <Route path="/payment/failed" element={<QueryRedirect to="/payment-failed" />} />
         <Route path="/payment/cancelled" element={<QueryRedirect to="/payment-cancelled" />} />
-
-        <Route path="/payment/mock/:orderId" element={<PaymentMock />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       {showBottomNav && <BottomNav />}

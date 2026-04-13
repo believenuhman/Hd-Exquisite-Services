@@ -6,11 +6,13 @@ import { createServer } from "node:http";
 
 // server/payment.ts
 import { createClient } from "@supabase/supabase-js";
-var SUPABASE_URL = process.env.VITE_SUPABASE_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "";
-var SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? "";
+var SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
+var SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 function getSupabaseAdmin() {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY)
-    throw new Error("Supabase credentials not configured (VITE_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)");
+  if (!SUPABASE_URL)
+    throw new Error("Supabase URL not configured. Set SUPABASE_URL (or VITE_SUPABASE_URL).");
+  if (!SUPABASE_SERVICE_KEY)
+    throw new Error("Supabase service role key not configured. Set SUPABASE_SERVICE_ROLE_KEY in Replit Secrets.");
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 }
 var PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID ?? "";
@@ -150,6 +152,12 @@ async function registerRoutes(app2) {
       paypal: isPayPalConfigured() ? "configured" : "not configured"
     });
   });
+  app2.get("/api/paypal/config", (_req, res) => {
+    res.json({
+      configured: isPayPalConfigured(),
+      environment: (process.env.PAYPAL_ENV ?? "sandbox").toLowerCase()
+    });
+  });
   app2.post("/api/paypal/create-order", async (req, res) => {
     try {
       const { orderId, amount, currency, description, origin } = req.body;
@@ -217,6 +225,18 @@ async function registerRoutes(app2) {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to cancel order";
       console.error("[POST /api/paypal/cancel-order]", err);
+      return res.status(500).json({ error: message });
+    }
+  });
+  app2.post("/api/paypal/fail-order", async (req, res) => {
+    try {
+      const { orderId } = req.body;
+      if (!orderId) return res.status(400).json({ error: "Missing orderId" });
+      await updateOrderFailed(orderId);
+      return res.json({ success: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update order";
+      console.error("[POST /api/paypal/fail-order]", err);
       return res.status(500).json({ error: message });
     }
   });

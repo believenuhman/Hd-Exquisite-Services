@@ -6,10 +6,6 @@ const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
 
 type Status = "loading" | "confirmed" | "error";
 
-function getApiBase(): string {
-  return "";
-}
-
 export function PaymentSuccess() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -49,7 +45,7 @@ export function PaymentSuccess() {
 
     try {
       // Call our backend to capture the PayPal payment and mark the order paid
-      const res = await fetch(`${getApiBase()}/api/paypal/capture-order`, {
+      const res = await fetch("/api/paypal/capture-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paypalOrderId: paypalToken, orderId: resolvedId }),

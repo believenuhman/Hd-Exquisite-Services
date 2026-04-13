@@ -4,10 +4,6 @@ import { IoCloseCircleOutline, IoChevronBack, IoHome } from "react-icons/io5";
 
 const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
 
-function getApiBase(): string {
-  return "";
-}
-
 export function PaymentCancelled() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -25,8 +21,7 @@ export function PaymentCancelled() {
 
     if (resolvedId) {
       try {
-        // Notify the backend to mark the order as cancelled
-        await fetch(`${getApiBase()}/api/paypal/cancel-order`, {
+        await fetch("/api/paypal/cancel-order", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ orderId: resolvedId }),
@@ -34,20 +29,7 @@ export function PaymentCancelled() {
       } catch (err) {
         console.warn("[payment-cancelled] Could not notify backend:", err);
       }
-      // Also try to update directly via Supabase as a fallback
-      try {
-        const { createClient } = await import("@supabase/supabase-js");
-        const url = import.meta.env.VITE_SUPABASE_URL ?? import.meta.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
-        const key = import.meta.env.VITE_SUPABASE_ANON_KEY ?? import.meta.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
-        if (url && key) {
-          const client = createClient(url, key);
-          await client.from("orders").update({ payment_status: "cancelled" }).eq("id", resolvedId);
-        }
-      } catch {
-        // Best-effort only
-      }
     }
-    // Keep pending key — user can retry from checkout
     setUpdating(false);
   };
 
@@ -63,7 +45,6 @@ export function PaymentCancelled() {
     <div className="fixed inset-0 flex flex-col" style={{ background: "#09090C" }}>
       <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6">
 
-        {/* Cancelled icon */}
         <div className="relative flex items-center justify-center">
           <div className="absolute" style={{ width: 120, height: 120, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,255,255,0.04) 0%, transparent 70%)" }} />
           <div className="flex items-center justify-center rounded-full" style={{ width: 96, height: 96, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)" }}>

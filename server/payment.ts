@@ -2,12 +2,14 @@ import { createClient } from "@supabase/supabase-js";
 
 // ─── Supabase ────────────────────────────────────────────────────────────────
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "";
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? "";
+const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 export function getSupabaseAdmin() {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY)
-    throw new Error("Supabase credentials not configured (VITE_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)");
+  if (!SUPABASE_URL)
+    throw new Error("Supabase URL not configured. Set SUPABASE_URL (or VITE_SUPABASE_URL).");
+  if (!SUPABASE_SERVICE_KEY)
+    throw new Error("Supabase service role key not configured. Set SUPABASE_SERVICE_ROLE_KEY in Replit Secrets.");
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 }
 

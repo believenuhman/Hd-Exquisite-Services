@@ -21,6 +21,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // ── GET /api/paypal/config ──────────────────────────────────────────────
+  app.get("/api/paypal/config", (_req: Request, res: Response) => {
+    res.json({
+      configured: isPayPalConfigured(),
+      environment: (process.env.PAYPAL_ENV ?? "sandbox").toLowerCase(),
+    });
+  });
+
   // ── POST /api/paypal/create-order ─────────────────────────────────────────
   // Creates a PayPal order and returns the approval URL.
   // The frontend stores the Supabase orderId in localStorage, then redirects
@@ -109,7 +117,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── POST /api/paypal/cancel-order ─────────────────────────────────────────
-  // Called when the user lands on /payment-cancelled after backing out of PayPal.
   app.post("/api/paypal/cancel-order", async (req: Request, res: Response) => {
     try {
       const { orderId } = req.body as { orderId: string };
@@ -119,6 +126,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to cancel order";
       console.error("[POST /api/paypal/cancel-order]", err);
+      return res.status(500).json({ error: message });
+    }
+  });
+
+  // ── POST /api/paypal/fail-order ─────────────────────────────────────────
+  app.post("/api/paypal/fail-order", async (req: Request, res: Response) => {
+    try {
+      const { orderId } = req.body as { orderId: string };
+      if (!orderId) return res.status(400).json({ error: "Missing orderId" });
+      await updateOrderFailed(orderId);
+      return res.json({ success: true });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to update order";
+      console.error("[POST /api/paypal/fail-order]", err);
       return res.status(500).json({ error: message });
     }
   });
