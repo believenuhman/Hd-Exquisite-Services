@@ -1,0 +1,71 @@
+Do a full production readiness audit for the HD XQUISITE LIQUORS app.
+
+This is a FINAL CHECK before publishing. Do not skip anything.
+
+Verify all systems end-to-end:
+
+1. PAYMENTS (PayPal)
+
+- confirm credentials are valid and being used
+- confirm sandbox flow works end-to-end
+- confirm success, cancel, and failure routes work
+- confirm no duplicate orders
+- confirm payment status is saved correctly in database
+- confirm gateway_name, payment_reference, paid_at are stored
+
+2. CHECKOUT FLOW
+
+- cart → checkout → payment → order confirmation
+- no crashes, no blank screens
+- prevent double submissions
+- ensure totals (subtotal, delivery, total) are always valid (no NaN)
+
+3. DATABASE (Supabase)
+
+- confirm orders table matches migration
+- confirm products load correctly
+- confirm stock_qty works (products with >0 can be purchased)
+- confirm no null crashes in numeric fields
+- confirm delivery zones fetch works
+
+4. API / BACKEND
+
+- all endpoints return HTTP 200
+- no unhandled errors
+- confirm /api routes work through proxy
+- confirm environment variables are correctly read
+
+5. FRONTEND (WEB + MOBILE/WEBVIEW)
+
+- confirm app loads in Replit preview AND dev URL
+- confirm Median/webview compatibility (no popup blockers, full redirect works)
+- confirm navigation works across all pages
+- confirm no console errors blocking functionality
+
+6. PERFORMANCE / STABILITY
+
+- confirm app can handle repeated orders without breaking
+- confirm no memory leaks or hanging requests
+- confirm loading states exist where needed
+
+7. SECURITY
+
+- confirm secrets are NOT exposed to frontend
+- confirm only safe data is sent to client
+- confirm no hardcoded credentials remain
+
+8. CLEANUP
+
+- confirm no mock/test payment code remains
+- confirm no placeholder text or dummy data visible to users
+- confirm logs are clean
+
+Return:
+
+1. PASS or FAIL for each section
+2. exact issues if anything fails
+3. whether the app is safe for 1 month of heavy use
+4. whether the app is READY FOR PRODUCTION LAUNCH
+5. anything I MUST fix before going live
+
+Be strict. Treat this like a real production audit.

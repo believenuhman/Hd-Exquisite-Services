@@ -35,9 +35,12 @@ export function ProductCard({ product, horizontal = false }: Props) {
 
   if (horizontal) {
     return (
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => navigate(`/product/${product.id}`)}
-        className="flex-shrink-0 press-active"
+        onKeyDown={(e) => { if (e.key === "Enter") navigate(`/product/${product.id}`); }}
+        className="flex-shrink-0 press-active cursor-pointer"
         style={{ width: 160 }}
       >
         <div
@@ -74,14 +77,17 @@ export function ProductCard({ product, horizontal = false }: Props) {
             </div>
           </div>
         </div>
-      </button>
+      </div>
     );
   }
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => navigate(`/product/${product.id}`)}
-      className="press-active w-full"
+      onKeyDown={(e) => { if (e.key === "Enter") navigate(`/product/${product.id}`); }}
+      className="press-active w-full cursor-pointer"
     >
       <div
         className="flex items-center gap-3 rounded-2xl p-3 card-shadow"
@@ -115,6 +121,6 @@ export function ProductCard({ product, horizontal = false }: Props) {
           </button>
         </div>
       </div>
-    </button>
+    </div>
   );
 }

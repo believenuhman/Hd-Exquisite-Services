@@ -246,7 +246,7 @@ export function Checkout() {
           {items.map(({ product, quantity }) => (
             <div key={product.id} className="flex justify-between mb-2">
               <span className="font-inter text-sm text-white">{product.name} ×{quantity}</span>
-              <span className="font-inter text-sm" style={{ color: "rgba(255,255,255,0.7)" }}>{sym}{(product.price * quantity).toFixed(2)}</span>
+              <span className="font-inter text-sm" style={{ color: "rgba(255,255,255,0.7)" }}>{sym}{((product.price ?? 0) * quantity).toFixed(2)}</span>
             </div>
           ))}
           <div style={{ height: 1, background: "rgba(228,161,43,0.1)", margin: "12px 0" }} />
