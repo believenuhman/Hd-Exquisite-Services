@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useContext, useState, useMemo, useCallback, ReactNode } from "react";
 import { storage } from "@/lib/storage";
 
 const AGE_KEY = "hd_age_verified";
@@ -13,12 +13,14 @@ const AgeGateContext = createContext<AgeGateContextType | null>(null);
 export function AgeGateProvider({ children }: { children: ReactNode }) {
   const [verified, setVerified] = useState<boolean>(() => storage.get(AGE_KEY) === "true");
 
-  const verify = () => {
+  const verify = useCallback(() => {
     storage.set(AGE_KEY, "true");
     setVerified(true);
-  };
+  }, []);
 
-  return <AgeGateContext.Provider value={{ verified, verify }}>{children}</AgeGateContext.Provider>;
+  const value = useMemo(() => ({ verified, verify }), [verified, verify]);
+
+  return <AgeGateContext.Provider value={value}>{children}</AgeGateContext.Provider>;
 }
 
 export function useAgeGate() {

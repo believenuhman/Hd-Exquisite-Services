@@ -14,12 +14,21 @@ export function ProductDetail() {
   const currSym = settings?.currency_symbol ?? "$";
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [qty, setQty] = useState(1);
 
   useEffect(() => {
     if (!id) return;
+    setFetchError(false);
+    setProduct(null);
+    setLoading(true);
     supabase.from("products").select("*").eq("id", id).single()
-      .then(({ data }) => { if (data) setProduct(data as Product); setLoading(false); });
+      .then(({ data, error }) => {
+        if (error) { setFetchError(true); setLoading(false); return; }
+        if (data) setProduct(data as Product);
+        setLoading(false);
+      })
+      .catch(() => { setFetchError(true); setLoading(false); });
   }, [id]);
 
   if (loading) return (
@@ -29,8 +38,12 @@ export function ProductDetail() {
   );
 
   if (!product) return (
-    <div className="fixed inset-0 flex items-center justify-center" style={{ background: "#09090C" }}>
-      <p className="font-inter text-white">Product not found</p>
+    <div className="fixed inset-0 flex flex-col items-center justify-center gap-3" style={{ background: "#09090C" }}>
+      <p className="font-inter text-white">{fetchError ? "Could not load product" : "Product not found"}</p>
+      <button onClick={() => navigate(-1)} className="px-6 py-2.5 rounded-xl font-inter text-sm font-semibold press-active"
+        style={{ background: "rgba(228,161,43,0.12)", border: "1px solid rgba(228,161,43,0.3)", color: "#E4A12B" }}>
+        Go Back
+      </button>
     </div>
   );
 

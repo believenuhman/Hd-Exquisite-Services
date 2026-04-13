@@ -26,41 +26,33 @@ export function Orders() {
   const { user, isGuest } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
 
-  useEffect(() => {
-    if (user || isGuest) {
-      // Use the phone number from user metadata or localStorage to scope orders to this user
-      const savedPhone =
-        user?.user_metadata?.phone ||
-        storage.get("hd_saved_phone") ||
-        "";
+  const loadOrders = () => {
+    if (!user && !isGuest) { setLoading(false); return; }
+    setFetchError(false);
+    setLoading(true);
 
-      if (savedPhone) {
-        supabase
-          .from("orders")
-          .select("*")
-          .eq("customer_phone", savedPhone.trim())
-          .order("created_at", { ascending: false })
-          .then(({ data }) => {
-            if (data) setOrders(data as Order[]);
-            setLoading(false);
-          });
-      } else {
-        // No phone available — fall back to fetching without filter
-        // (Supabase RLS should restrict results to the authenticated user's rows)
-        supabase
-          .from("orders")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .then(({ data }) => {
-            if (data) setOrders(data as Order[]);
-            setLoading(false);
-          });
-      }
-    } else {
-      setLoading(false);
-    }
-  }, [user, isGuest]);
+    const savedPhone =
+      user?.user_metadata?.phone ||
+      storage.get("hd_saved_phone") ||
+      "";
+
+    const query = savedPhone
+      ? supabase.from("orders").select("*").eq("customer_phone", savedPhone.trim()).order("created_at", { ascending: false })
+      : supabase.from("orders").select("*").order("created_at", { ascending: false });
+
+    query
+      .then(({ data, error }) => {
+        if (error) { setFetchError(true); setLoading(false); return; }
+        setFetchError(false);
+        if (data) setOrders(data as Order[]);
+        setLoading(false);
+      })
+      .catch(() => { setFetchError(true); setLoading(false); });
+  };
+
+  useEffect(() => { loadOrders(); }, [user, isGuest]);
 
   const formatDate = (iso: string) => {
     const d = new Date(iso);
@@ -89,6 +81,15 @@ export function Orders() {
         ) : loading ? (
           <div className="flex justify-center py-16">
             <div style={{ width: 32, height: 32, border: "2px solid rgba(228,161,43,0.2)", borderTopColor: "#E4A12B", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+          </div>
+        ) : fetchError ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <span style={{ fontSize: 32 }}>⚠️</span>
+            <p className="font-inter text-sm text-white">Could not load orders</p>
+            <button onClick={loadOrders} className="px-6 py-2.5 rounded-xl font-inter text-sm font-semibold press-active"
+              style={{ background: "rgba(228,161,43,0.12)", border: "1px solid rgba(228,161,43,0.3)", color: "#E4A12B" }}>
+              Retry
+            </button>
           </div>
         ) : orders.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
@@ -119,7 +120,7 @@ export function Orders() {
                     <p className="font-inter text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>{formatDate(order.created_at)}</p>
                   </div>
                   <div className="flex flex-col items-end gap-2">
-                    <span className="font-inter font-bold text-sm" style={{ color: "#E4A12B" }}>{order.currency_symbol}{order.total?.toFixed(2)}</span>
+                    <span className="font-inter font-bold text-sm" style={{ color: "#E4A12B" }}>{order.currency_symbol}{(order.total ?? 0).toFixed(2)}</span>
                     <IoChevronForward size={16} color="rgba(255,255,255,0.3)" />
                   </div>
                 </button>

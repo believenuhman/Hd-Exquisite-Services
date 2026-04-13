@@ -23,9 +23,16 @@ export function Home() {
   const [activeCategory, setActiveCategory] = useState("All");
   const [heroIdx, setHeroIdx] = useState(0);
 
+  const [fetchError, setFetchError] = useState(false);
+
   useEffect(() => {
     supabase.from("products").select("*").eq("is_active", true).order("created_at", { ascending: false })
-      .then(({ data }) => { if (data) setProducts(data as Product[]); setLoading(false); });
+      .then(({ data, error }) => {
+        if (error) { setFetchError(true); setLoading(false); return; }
+        if (data) setProducts(data as Product[]);
+        setLoading(false);
+      })
+      .catch(() => { setFetchError(true); setLoading(false); });
   }, []);
 
   useEffect(() => {
@@ -123,7 +130,19 @@ export function Home() {
           ))}
         </div>
 
-        {activeCategory === "All" ? (
+        {fetchError && !loading && (
+          <div className="flex flex-col items-center py-16 gap-3">
+            <span style={{ fontSize: 32 }}>⚠️</span>
+            <p className="font-inter text-sm text-white">Could not load products</p>
+            <button onClick={() => { setFetchError(false); setLoading(true); supabase.from("products").select("*").eq("is_active", true).order("created_at", { ascending: false }).then(({ data, error }) => { if (error) { setFetchError(true); } else if (data) { setProducts(data as Product[]); } setLoading(false); }).catch(() => { setFetchError(true); setLoading(false); }); }}
+              className="px-6 py-2.5 rounded-xl font-inter text-sm font-semibold press-active"
+              style={{ background: "rgba(228,161,43,0.12)", border: "1px solid rgba(228,161,43,0.3)", color: "#E4A12B" }}>
+              Retry
+            </button>
+          </div>
+        )}
+
+        {!fetchError && activeCategory === "All" ? (
           <>
             {/* Featured */}
             {featured.length > 0 && (
@@ -161,7 +180,7 @@ export function Home() {
               </div>
             )}
           </>
-        ) : (
+        ) : !fetchError ? (
           <div className="px-4 flex flex-col gap-3">
             <p className="font-inter text-xs mb-2" style={{ color: "rgba(255,255,255,0.4)" }}>{filtered.length} products in {activeCategory}</p>
             {filtered.map((p) => <ProductCard key={p.id} product={p} />)}
@@ -171,7 +190,7 @@ export function Home() {
               </div>
             )}
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

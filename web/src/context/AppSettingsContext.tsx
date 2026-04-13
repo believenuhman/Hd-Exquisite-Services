@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import React, { createContext, useContext, useEffect, useState, useMemo, ReactNode } from "react";
 import { supabase, AppSettings } from "@/lib/supabase";
 
 type AppSettingsContextType = {
@@ -13,20 +13,26 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
     supabase
       .from("settings")
       .select("*")
       .single()
       .then(({ data }) => {
+        if (!mounted) return;
         if (data) setSettings(data as AppSettings);
         setLoading(false);
       })
       .catch(() => {
+        if (!mounted) return;
         setLoading(false);
       });
+    return () => { mounted = false; };
   }, []);
 
-  return <AppSettingsContext.Provider value={{ settings, loading }}>{children}</AppSettingsContext.Provider>;
+  const value = useMemo(() => ({ settings, loading }), [settings, loading]);
+
+  return <AppSettingsContext.Provider value={value}>{children}</AppSettingsContext.Provider>;
 }
 
 export function useAppSettings() {

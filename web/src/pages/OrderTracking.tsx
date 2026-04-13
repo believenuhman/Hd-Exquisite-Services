@@ -210,7 +210,7 @@ export function OrderTracking() {
             <React.Fragment key={item.id}>
               <div className="flex justify-between py-2">
                 <span className="font-inter text-sm text-white">{item.name} ×{item.qty}</span>
-                <span className="font-inter text-sm" style={{ color: "rgba(255,255,255,0.6)" }}>{order.currency_symbol}{(item.unit_price * item.qty).toFixed(2)}</span>
+                <span className="font-inter text-sm" style={{ color: "rgba(255,255,255,0.6)" }}>{order.currency_symbol}{((item.unit_price ?? 0) * (item.qty ?? 0)).toFixed(2)}</span>
               </div>
               {i < orderItems.length - 1 && <div style={{ height: 1, background: "rgba(255,255,255,0.05)" }} />}
             </React.Fragment>
@@ -218,15 +218,15 @@ export function OrderTracking() {
           <div style={{ height: 1, background: "rgba(228,161,43,0.1)", margin: "12px 0 8px" }} />
           <div className="flex justify-between py-1">
             <span className="font-inter text-sm" style={{ color: "rgba(255,255,255,0.55)" }}>Subtotal</span>
-            <span className="font-inter text-sm text-white">{order.currency_symbol}{order.subtotal?.toFixed(2)}</span>
+            <span className="font-inter text-sm text-white">{order.currency_symbol}{(order.subtotal ?? 0).toFixed(2)}</span>
           </div>
           <div className="flex justify-between py-1">
             <span className="font-inter text-sm" style={{ color: "rgba(255,255,255,0.55)" }}>Delivery</span>
-            <span className="font-inter text-sm text-white">{order.currency_symbol}{order.delivery_fee?.toFixed(2)}</span>
+            <span className="font-inter text-sm text-white">{order.currency_symbol}{(order.delivery_fee ?? 0).toFixed(2)}</span>
           </div>
           <div className="flex justify-between pt-2 mt-1" style={{ borderTop: "1px solid rgba(228,161,43,0.1)" }}>
             <span className="font-inter font-bold text-white">Total</span>
-            <span className="font-inter font-bold text-lg" style={{ color: "#E4A12B" }}>{order.currency_symbol}{order.total?.toFixed(2)}</span>
+            <span className="font-inter font-bold text-lg" style={{ color: "#E4A12B" }}>{order.currency_symbol}{(order.total ?? 0).toFixed(2)}</span>
           </div>
         </div>
 

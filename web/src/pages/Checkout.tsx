@@ -40,7 +40,8 @@ export function Checkout() {
 
   useEffect(() => {
     supabase.from("delivery_zones").select("*").eq("is_active", true)
-      .then(({ data }) => { if (data) setZones(data as DeliveryZone[]); });
+      .then(({ data }) => { if (data) setZones(data as DeliveryZone[]); })
+      .catch(() => {});
   }, []);
 
   const deliveryFee  = selectedZone?.fee ?? (settings?.flat_fee ?? 0);

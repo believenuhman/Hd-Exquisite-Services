@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { storage } from "@/lib/storage";
@@ -55,15 +55,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => { mounted = false; subscription.unsubscribe(); };
   }, []);
 
-  const signIn = async (email: string, password: string): Promise<{ error: string | null }> => {
+  const signIn = useCallback(async (email: string, password: string): Promise<{ error: string | null }> => {
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
     if (error) return { error: error.message };
     storage.remove(GUEST_KEY);
     setIsGuest(false);
     return { error: null };
-  };
+  }, []);
 
-  const signUp = async (email: string, password: string, fullName: string, phone: string): Promise<{ error: string | null }> => {
+  const signUp = useCallback(async (email: string, password: string, fullName: string, phone: string): Promise<{ error: string | null }> => {
     const { error } = await supabase.auth.signUp({
       email: email.trim().toLowerCase(),
       password,
@@ -73,21 +73,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     storage.remove(GUEST_KEY);
     setIsGuest(false);
     return { error: null };
-  };
+  }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     storage.remove(GUEST_KEY);
     setIsGuest(false);
-  };
+  }, []);
 
-  const continueAsGuest = () => {
+  const continueAsGuest = useCallback(() => {
     storage.set(GUEST_KEY, "true");
     setIsGuest(true);
-  };
+  }, []);
+
+  const value = useMemo(() => ({
+    user, session, isGuest, loading, signIn, signUp, signOut, continueAsGuest,
+  }), [user, session, isGuest, loading, signIn, signUp, signOut, continueAsGuest]);
 
   return (
-    <AuthContext.Provider value={{ user, session, isGuest, loading, signIn, signUp, signOut, continueAsGuest }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
