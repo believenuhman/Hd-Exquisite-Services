@@ -116,6 +116,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (order.payment_method !== "online_card")  return res.status(400).json({ error: "Order is not an online payment." });
       if (order.payment_status === "paid")         return res.status(409).json({ error: "Order is already paid." });
       if (order.payment_status === "cancelled")    return res.status(409).json({ error: "Order is cancelled." });
+      // Reject if a PayPal session is already bound — prevents a malicious or
+      // duplicate call from replacing the existing binding and creating a second
+      // PayPal order for the same local record.
+      if (order.paypal_order_id) {
+        return res.status(409).json({ error: "A PayPal payment session is already open for this order." });
+      }
 
       const returnUrl = `${origin}/payment-success`;
       const cancelUrl = `${origin}/payment-cancelled`;

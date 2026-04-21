@@ -36,6 +36,10 @@ create table if not exists delivery_zones (
 );
 
 -- Orders
+-- IMPORTANT: payment_method, payment_status, payment_reference, gateway_name,
+-- paid_at, and paypal_order_id are authoritative server-set columns.
+-- No public RLS policy permits clients to insert or update these rows directly.
+-- All order writes go through the backend Express server using the service role key.
 create table if not exists orders (
   id uuid primary key default gen_random_uuid(),
   customer_name text not null,
@@ -52,7 +56,17 @@ create table if not exists orders (
   currency_symbol text not null default '$',
   zone_id uuid references delivery_zones(id),
   refusal_reason text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- Payment columns (server-set only — never trusted from client)
+  payment_method text not null default 'cash_on_delivery'
+    check (payment_method in ('cash_on_delivery', 'online_card')),
+  payment_status text not null default 'pending'
+    check (payment_status in ('pending', 'paid', 'failed', 'cancelled', 'refunded')),
+  payment_reference text,
+  gateway_name text,
+  paid_at timestamptz,
+  -- Bound PayPal order ID — unique so one PayPal token cannot be replayed across orders
+  paypal_order_id text unique
 );
 
 -- Order Items

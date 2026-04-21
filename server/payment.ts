@@ -266,13 +266,36 @@ export async function getOrderById(orderId: string): Promise<LocalOrder | null> 
 
 export async function bindPayPalOrderId(orderId: string, paypalOrderId: string): Promise<void> {
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase
+  // Only bind if paypal_order_id is still null — prevents a second PayPal session
+  // from overwriting an in-progress binding (race-condition / double-create guard).
+  const { data, error } = await supabase
     .from("orders")
     .update({ paypal_order_id: paypalOrderId })
-    .eq("id", orderId);
+    .eq("id", orderId)
+    .is("paypal_order_id", null)
+    .select("id")
+    .maybeSingle();
   if (error) {
     console.error("[payment] bindPayPalOrderId error:", error);
     throw new Error("Failed to bind PayPal order ID: " + error.message);
+  }
+  if (!data) {
+    // Row was not updated — either order not found or already has a PayPal binding.
+    // Re-fetch to distinguish the cases and give a meaningful error.
+    const existing = await getOrderById(orderId);
+    if (!existing) throw new Error("Order not found when attempting to bind PayPal order.");
+    if (existing.paypal_order_id && existing.paypal_order_id !== paypalOrderId) {
+      // Log for monitoring: multiple distinct PayPal sessions against one order
+      // may indicate a replay attempt or race condition — alert if frequent.
+      console.warn(
+        `[paypal] BIND_CONFLICT orderId=${orderId} ` +
+        `existingPaypalId=${existing.paypal_order_id} ` +
+        `attemptedPaypalId=${paypalOrderId}`
+      );
+      throw new Error("Order is already bound to a different PayPal payment session.");
+    }
+    // Same paypal_order_id — idempotent re-bind; treat as success.
+    console.log(`[paypal] bindPayPalOrderId idempotent: orderId=${orderId} paypalOrderId=${paypalOrderId}`);
   }
 }
 
@@ -353,7 +376,7 @@ export async function createServerOrder(input: CreateOrderInput): Promise<Create
     deliveryFee = Number(zone.fee ?? 0);
   } else {
     const { data: settings } = await supabase
-      .from("app_settings")
+      .from("settings")
       .select("flat_fee")
       .limit(1)
       .maybeSingle();
@@ -361,9 +384,9 @@ export async function createServerOrder(input: CreateOrderInput): Promise<Create
   }
   deliveryFee = Math.round(deliveryFee * 100) / 100;
 
-  // 5. Currency from app_settings
+  // 5. Currency from settings
   const { data: settingsRow } = await supabase
-    .from("app_settings")
+    .from("settings")
     .select("currency_code,currency_symbol")
     .limit(1)
     .maybeSingle();
