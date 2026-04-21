@@ -1,9 +1,17 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IoChevronForward } from "react-icons/io5";
-import { supabase, Order } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 import { storage } from "@/lib/storage";
+
+type OrderSummary = {
+  id: string;
+  status: string;
+  created_at: string;
+  total: number;
+  currency_symbol: string;
+  payment_status: string;
+};
 
 const STATUS_LABELS: Record<string, string> = {
   received: "Order Received",
@@ -24,7 +32,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 export function Orders() {
   const navigate = useNavigate();
   const { user, isGuest } = useAuth();
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
 
@@ -38,15 +46,20 @@ export function Orders() {
       storage.get("hd_saved_phone") ||
       "";
 
-    const query = savedPhone
-      ? supabase.from("orders").select("*").eq("customer_phone", savedPhone.trim()).order("created_at", { ascending: false })
-      : supabase.from("orders").select("*").order("created_at", { ascending: false });
+    if (!savedPhone.trim()) {
+      setOrders([]);
+      setLoading(false);
+      return;
+    }
 
-    query
-      .then(({ data, error }) => {
-        if (error) { setFetchError(true); setLoading(false); return; }
+    fetch(`/api/orders/by-phone?phone=${encodeURIComponent(savedPhone.trim())}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load orders");
+        return res.json() as Promise<{ orders: OrderSummary[] }>;
+      })
+      .then(({ orders: data }) => {
+        setOrders(data);
         setFetchError(false);
-        if (data) setOrders(data as Order[]);
         setLoading(false);
       })
       .catch(() => { setFetchError(true); setLoading(false); });
@@ -116,7 +129,6 @@ export function Orders() {
                         <span className="font-inter text-xs font-semibold" style={{ color: sc.text }}>{STATUS_LABELS[order.status]}</span>
                       </div>
                     </div>
-                    <p className="font-inter text-xs mb-1 truncate" style={{ color: "rgba(255,255,255,0.45)" }}>{order.delivery_address}</p>
                     <p className="font-inter text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>{formatDate(order.created_at)}</p>
                   </div>
                   <div className="flex flex-col items-end gap-2">

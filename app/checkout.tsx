@@ -18,7 +18,7 @@ import { Colors } from "@/constants/colors";
 import { ScreenBackground } from "@/components/ScreenBackground";
 import { useCart } from "@/context/CartContext";
 import { useAppSettings } from "@/context/AppSettingsContext";
-import { supabase } from "@/lib/supabase";
+import { apiRequest } from "@/lib/query-client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const ADDR_KEY = "hd_saved_address";
@@ -104,40 +104,19 @@ export default function CheckoutScreen() {
         AsyncStorage.setItem(ADDR_KEY, address),
       ]);
 
-      const { data: order, error: orderErr } = await supabase
-        .from("orders")
-        .insert({
-          customer_name: name,
-          customer_phone: phone,
-          delivery_address: address,
-          delivery_notes: notes || null,
-          age_confirmed: ageCheck,
-          status: "received",
-          subtotal,
-          delivery_fee: deliveryFee,
-          total,
-          currency_code: settings?.currency_code ?? "USD",
-          currency_symbol: settings?.currency_symbol ?? "$",
-          zone_id: zoneId,
-        })
-        .select()
-        .single();
-
-      if (orderErr) throw orderErr;
-
-      const orderItems = items.map((i) => ({
-        order_id: order.id,
-        product_id: i.product.id,
-        name: i.product.name,
-        qty: i.quantity,
-        unit_price: i.product.price,
-      }));
-
-      const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);
-      if (itemsErr) throw itemsErr;
+      const res = await apiRequest("POST", "/api/orders/create", {
+        items: items.map((i) => ({ product_id: i.product.id, quantity: i.quantity })),
+        customer_name:    name.trim(),
+        customer_phone:   phone.trim(),
+        delivery_address: address.trim(),
+        delivery_notes:   notes.trim() || null,
+        zone_id:          zoneId,
+        payment_method:   "cash_on_delivery",
+      });
+      const order = await res.json() as { orderId: string };
 
       clearCart();
-      router.replace({ pathname: "/order-tracking/[id]", params: { id: order.id } });
+      router.replace({ pathname: "/order-tracking/[id]", params: { id: order.orderId } });
     } catch (err: any) {
       Alert.alert("Error", err.message ?? "Failed to place order. Please try again.");
     } finally {

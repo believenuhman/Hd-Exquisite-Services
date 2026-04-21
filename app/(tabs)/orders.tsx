@@ -14,7 +14,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Colors } from "@/constants/colors";
-import { supabase } from "@/lib/supabase";
+import { getApiUrl } from "@/lib/query-client";
+import { fetch } from "expo/fetch";
 import { ScreenBackground } from "@/components/ScreenBackground";
 import { useAppSettings } from "@/context/AppSettingsContext";
 
@@ -35,8 +36,8 @@ interface Order {
   created_at: string;
   status: string;
   total: number;
-  delivery_address: string;
-  customer_name: string;
+  currency_symbol: string;
+  payment_status: string;
 }
 
 function OrderCard({ order, formatPrice }: { order: Order; formatPrice: (n: number) => string }) {
@@ -64,13 +65,7 @@ function OrderCard({ order, formatPrice }: { order: Order; formatPrice: (n: numb
       </View>
       <View style={styles.orderDivider} />
       <View style={styles.orderBottom}>
-        <View style={styles.addressRow}>
-          <Ionicons name="location-outline" size={14} color={Colors.textSecondary} />
-          <Text style={styles.addressText} numberOfLines={1}>
-            {order.delivery_address}
-          </Text>
-        </View>
-        <Text style={styles.orderTotal}>{formatPrice(order.total)}</Text>
+        <Text style={styles.orderTotal}>{order.currency_symbol}{(order.total ?? 0).toFixed(2)}</Text>
       </View>
     </Pressable>
   );
@@ -94,12 +89,12 @@ export default function OrdersScreen() {
         setRefreshing(false);
         return;
       }
-      const { data } = await supabase
-        .from("orders")
-        .select("id,created_at,status,total,delivery_address,customer_name")
-        .eq("customer_phone", phone)
-        .order("created_at", { ascending: false });
-      if (data) setOrders(data as Order[]);
+      const baseUrl = getApiUrl();
+      const url = new URL(`/api/orders/by-phone?phone=${encodeURIComponent(phone.trim())}`, baseUrl);
+      const res = await fetch(url.toString());
+      if (!res.ok) throw new Error("Failed to fetch orders");
+      const json = await res.json() as { orders: Order[] };
+      setOrders(json.orders ?? []);
     } catch (e) {
       console.warn("Orders fetch failed:", e);
     } finally {

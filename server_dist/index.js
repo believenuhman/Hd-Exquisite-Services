@@ -256,6 +256,17 @@ async function createServerOrder(input) {
 function amountsMatch(a, b) {
   return Math.round(Number(a) * 100) === Math.round(Number(b) * 100);
 }
+var rateLimitStore = /* @__PURE__ */ new Map();
+function checkRateLimit(key, limit = 10, windowMs = 6e4) {
+  const now = Date.now();
+  const entry = rateLimitStore.get(key);
+  if (!entry || now > entry.resetAt) {
+    rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= limit;
+}
 async function registerRoutes(app2) {
   app2.get("/api/health", (_req, res) => {
     res.json({
@@ -412,6 +423,67 @@ async function registerRoutes(app2) {
       const message = err instanceof Error ? err.message : "Failed to update order";
       console.error("[POST /api/paypal/fail-order]", err);
       return res.status(500).json({ error: message });
+    }
+  });
+  app2.get("/api/orders/by-phone", async (req, res) => {
+    try {
+      const ip = (req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "unknown").split(",")[0].trim();
+      if (!checkRateLimit(`orders-by-phone:${ip}`, 10, 6e4)) {
+        return res.status(429).json({ error: "Too many requests. Please wait a moment and try again." });
+      }
+      const phone = (req.query.phone ?? "").trim();
+      if (!phone) {
+        return res.status(400).json({ error: "phone query parameter is required." });
+      }
+      if (phone.length < 5 || phone.length > 30) {
+        return res.status(400).json({ error: "Invalid phone number format." });
+      }
+      const supabase = getSupabaseAdmin();
+      const { data, error } = await supabase.from("orders").select("id,status,created_at,total,currency_symbol,payment_status").eq("customer_phone", phone).order("created_at", { ascending: false }).limit(50);
+      if (error) {
+        console.error("[GET /api/orders/by-phone]", error);
+        return res.status(500).json({ error: "Failed to load orders." });
+      }
+      return res.json({ orders: data ?? [] });
+    } catch (err) {
+      console.error("[GET /api/orders/by-phone]", err);
+      return res.status(500).json({ error: "Failed to load orders." });
+    }
+  });
+  app2.get("/api/orders/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
+        return res.status(400).json({ error: "Invalid order ID." });
+      }
+      const phone = (req.query.phone ?? "").trim();
+      if (!phone) {
+        return res.status(400).json({ error: "phone query parameter is required." });
+      }
+      const ip = (req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "unknown").split(",")[0].trim();
+      if (!checkRateLimit(`orders-id:${ip}`, 20, 6e4)) {
+        return res.status(429).json({ error: "Too many requests. Please wait a moment and try again." });
+      }
+      const supabase = getSupabaseAdmin();
+      const [orderRes, itemsRes] = await Promise.all([
+        supabase.from("orders").select("id,status,customer_name,customer_phone,delivery_address,subtotal,delivery_fee,total,currency_symbol,currency_code,refusal_reason,created_at,payment_method,payment_status,paid_at").eq("id", id).maybeSingle(),
+        supabase.from("order_items").select("id,order_id,product_id,name,qty,unit_price").eq("order_id", id)
+      ]);
+      if (orderRes.error) {
+        console.error("[GET /api/orders/:id] order error:", orderRes.error);
+        return res.status(500).json({ error: "Failed to load order." });
+      }
+      if (!orderRes.data) {
+        return res.status(404).json({ error: "Order not found." });
+      }
+      const order = orderRes.data;
+      if (order.customer_phone.trim() !== phone) {
+        return res.status(403).json({ error: "Access denied." });
+      }
+      return res.json({ order: orderRes.data, items: itemsRes.data ?? [] });
+    } catch (err) {
+      console.error("[GET /api/orders/:id]", err);
+      return res.status(500).json({ error: "Failed to load order." });
     }
   });
   const httpServer = createServer(app2);

@@ -4,9 +4,38 @@ import {
   IoChevronBack, IoHome, IoCheckmarkCircle, IoAlertCircle,
   IoCard, IoCash, IoRefresh, IoTime,
 } from "react-icons/io5";
-import { supabase, Order, OrderItem } from "@/lib/supabase";
 
-const STEPS: { key: Order["status"]; label: string; sub: string; icon: string }[] = [
+type OrderStatus = "received" | "packing" | "out_for_delivery" | "delivered" | "refused";
+type PaymentStatus = "paid" | "pending" | "failed" | "cancelled" | "refunded" | null;
+
+type Order = {
+  id: string;
+  status: OrderStatus;
+  customer_name: string;
+  customer_phone: string;
+  delivery_address: string;
+  subtotal: number;
+  delivery_fee: number;
+  total: number;
+  currency_symbol: string;
+  currency_code: string;
+  refusal_reason: string | null;
+  created_at: string;
+  payment_method: string | null;
+  payment_status: PaymentStatus;
+  paid_at: string | null;
+};
+
+type OrderItem = {
+  id: string;
+  order_id: string;
+  product_id: string | null;
+  name: string;
+  qty: number;
+  unit_price: number;
+};
+
+const STEPS: { key: OrderStatus; label: string; sub: string; icon: string }[] = [
   { key: "received",         label: "Order Received",     sub: "We got your order",       icon: "📋" },
   { key: "packing",          label: "Packing",            sub: "Your order is being packed", icon: "📦" },
   { key: "out_for_delivery", label: "Out for Delivery",   sub: "Driver on the way",        icon: "🚗" },
@@ -16,8 +45,6 @@ const STEPS: { key: Order["status"]; label: string; sub: string; icon: string }[
 const ORDER_IDX: Record<string, number> = {
   received: 0, packing: 1, out_for_delivery: 2, delivered: 3, refused: -1,
 };
-
-type PaymentStatus = Order["payment_status"];
 
 function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
   if (!status) return null;
@@ -50,14 +77,24 @@ export function OrderTracking() {
   const fetchOrder = () => {
     if (!id) return;
     setLoading(true);
-    Promise.all([
-      supabase.from("orders").select("*").eq("id", id).single(),
-      supabase.from("order_items").select("*").eq("order_id", id),
-    ]).then(([{ data: o }, { data: oi }]) => {
-      if (o) setOrder(o as Order);
-      if (oi) setOrderItems(oi as OrderItem[]);
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    // Phone is required for ownership verification server-side.
+    // It is stored locally after the user completes checkout.
+    const phone =
+      localStorage.getItem("hd_saved_phone") ??
+      sessionStorage.getItem("hd_saved_phone") ??
+      "";
+    const url = `/api/orders/${encodeURIComponent(id)}${phone ? `?phone=${encodeURIComponent(phone.trim())}` : ""}`;
+    fetch(url)
+      .then((res) => {
+        if (!res.ok) throw new Error("Order not found");
+        return res.json() as Promise<{ order: Order; items: OrderItem[] }>;
+      })
+      .then(({ order: o, items: oi }) => {
+        setOrder(o);
+        setOrderItems(oi);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
   };
 
   useEffect(() => { fetchOrder(); }, [id]);
@@ -84,7 +121,6 @@ export function OrderTracking() {
     (order.payment_status === "pending" || order.payment_status === "cancelled" || order.payment_status === "failed");
 
   const handleRetryPayment = () => {
-    // Store the order ID so checkout can pick it up, then send back to checkout
     localStorage.setItem("hd_pending_payment_order_id", order.id);
     navigate("/checkout");
   };
@@ -126,7 +162,7 @@ export function OrderTracking() {
               {order.payment_method === "online_card"
                 ? <IoCard size={11} color="#C91E8C" />
                 : <IoCash size={11} color="#E4A12B" />}
-              <span className="font-inter text-xs font-semibold" style={{ color: order.payment_method === "online_card" ? "#E4A12B" : "#E4A12B" }}>
+              <span className="font-inter text-xs font-semibold" style={{ color: "#E4A12B" }}>
                 {order.payment_method === "online_card" ? "PayPal Online" : "Cash on Delivery"}
               </span>
             </div>

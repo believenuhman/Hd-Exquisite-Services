@@ -15,7 +15,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { Colors } from "@/constants/colors";
 import { ScreenBackground } from "@/components/ScreenBackground";
-import { supabase, Order, OrderItem } from "@/lib/supabase";
+import { Order, OrderItem } from "@/lib/supabase";
+import { getApiUrl } from "@/lib/query-client";
+import { fetch } from "expo/fetch";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAppSettings } from "@/context/AppSettingsContext";
 
 const STATUS_STEPS: { key: Order["status"]; label: string; icon: string }[] = [
@@ -43,12 +46,17 @@ export default function OrderTrackingScreen() {
   const fetchOrder = useCallback(async () => {
     if (!id) return;
     try {
-      const [{ data: o }, { data: i }] = await Promise.all([
-        supabase.from("orders").select("*").eq("id", id).single(),
-        supabase.from("order_items").select("*").eq("order_id", id),
-      ]);
-      if (o) setOrder(o as Order);
-      if (i) setItems(i as OrderItem[]);
+      const phone = (await AsyncStorage.getItem("hd_saved_phone") ?? "").trim();
+      const baseUrl = getApiUrl();
+      const url = new URL(
+        `/api/orders/${encodeURIComponent(id)}${phone ? `?phone=${encodeURIComponent(phone)}` : ""}`,
+        baseUrl,
+      );
+      const res = await fetch(url.toString());
+      if (!res.ok) throw new Error("Order not found");
+      const json = await res.json() as { order: Order; items: OrderItem[] };
+      setOrder(json.order);
+      setItems(json.items ?? []);
     } catch (e) {
       console.warn("Order fetch failed:", e);
     } finally {

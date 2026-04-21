@@ -11,11 +11,26 @@ import {
   getOrderById,
   getOrderByPayPalId,
   bindPayPalOrderId,
+  getSupabaseAdmin,
 } from "./payment";
 
 // Compare two monetary amounts at cent precision.
 function amountsMatch(a: number, b: number): boolean {
   return Math.round(Number(a) * 100) === Math.round(Number(b) * 100);
+}
+
+// Simple in-memory rate limiter: max `limit` requests per `windowMs` per key.
+// This prevents brute-force enumeration of phone numbers on the order-lookup endpoint.
+const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+function checkRateLimit(key: string, limit = 10, windowMs = 60_000): boolean {
+  const now = Date.now();
+  const entry = rateLimitStore.get(key);
+  if (!entry || now > entry.resetAt) {
+    rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= limit;
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -230,6 +245,109 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const message = err instanceof Error ? err.message : "Failed to update order";
       console.error("[POST /api/paypal/fail-order]", err);
       return res.status(500).json({ error: message });
+    }
+  });
+
+  // ── GET /api/orders/by-phone ──────────────────────────────────────────────
+  // Returns order summaries for a given phone number.
+  // Rate-limited per IP (10 req/min) to prevent phone enumeration.
+  // Only non-PII summary fields are returned; full order details require
+  // a separate authenticated lookup via GET /api/orders/:id?phone=<phone>.
+  app.get("/api/orders/by-phone", async (req: Request, res: Response) => {
+    try {
+      // Rate limit by IP to mitigate phone-number brute-force enumeration.
+      const ip = (req.headers["x-forwarded-for"] as string | undefined ?? req.socket.remoteAddress ?? "unknown").split(",")[0].trim();
+      if (!checkRateLimit(`orders-by-phone:${ip}`, 10, 60_000)) {
+        return res.status(429).json({ error: "Too many requests. Please wait a moment and try again." });
+      }
+
+      const phone = (req.query.phone as string ?? "").trim();
+      if (!phone) {
+        return res.status(400).json({ error: "phone query parameter is required." });
+      }
+      // Reject obviously invalid phone strings to reduce noise.
+      if (phone.length < 5 || phone.length > 30) {
+        return res.status(400).json({ error: "Invalid phone number format." });
+      }
+
+      const supabase = getSupabaseAdmin();
+      // Return only the minimum fields needed for the order list view.
+      // delivery_address and other PII are deliberately excluded — they are
+      // only returned from GET /api/orders/:id which requires the phone match.
+      const { data, error } = await supabase
+        .from("orders")
+        .select("id,status,created_at,total,currency_symbol,payment_status")
+        .eq("customer_phone", phone)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) {
+        console.error("[GET /api/orders/by-phone]", error);
+        return res.status(500).json({ error: "Failed to load orders." });
+      }
+      return res.json({ orders: data ?? [] });
+    } catch (err: unknown) {
+      console.error("[GET /api/orders/by-phone]", err);
+      return res.status(500).json({ error: "Failed to load orders." });
+    }
+  });
+
+  // ── GET /api/orders/:id ────────────────────────────────────────────────────
+  // Returns a single order and its items.
+  // Requires `phone` query param that must match the order's customer_phone.
+  // This dual-factor check (UUID + phone) ensures only the order creator can
+  // access their own order detail, without requiring a user account.
+  app.get("/api/orders/:id", async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
+        return res.status(400).json({ error: "Invalid order ID." });
+      }
+
+      // Phone is required as a proof-of-ownership alongside the order UUID.
+      const phone = (req.query.phone as string ?? "").trim();
+      if (!phone) {
+        return res.status(400).json({ error: "phone query parameter is required." });
+      }
+
+      // Rate limit per IP to mitigate guessing attacks.
+      const ip = (req.headers["x-forwarded-for"] as string | undefined ?? req.socket.remoteAddress ?? "unknown").split(",")[0].trim();
+      if (!checkRateLimit(`orders-id:${ip}`, 20, 60_000)) {
+        return res.status(429).json({ error: "Too many requests. Please wait a moment and try again." });
+      }
+
+      const supabase = getSupabaseAdmin();
+
+      // Fetch only the fields the UI needs; verify phone ownership in one query.
+      const [orderRes, itemsRes] = await Promise.all([
+        supabase
+          .from("orders")
+          .select("id,status,customer_name,customer_phone,delivery_address,subtotal,delivery_fee,total,currency_symbol,currency_code,refusal_reason,created_at,payment_method,payment_status,paid_at")
+          .eq("id", id)
+          .maybeSingle(),
+        supabase
+          .from("order_items")
+          .select("id,order_id,product_id,name,qty,unit_price")
+          .eq("order_id", id),
+      ]);
+
+      if (orderRes.error) {
+        console.error("[GET /api/orders/:id] order error:", orderRes.error);
+        return res.status(500).json({ error: "Failed to load order." });
+      }
+      if (!orderRes.data) {
+        return res.status(404).json({ error: "Order not found." });
+      }
+
+      // Verify caller knows the customer phone linked to this order.
+      const order = orderRes.data as { customer_phone: string };
+      if (order.customer_phone.trim() !== phone) {
+        return res.status(403).json({ error: "Access denied." });
+      }
+
+      return res.json({ order: orderRes.data, items: itemsRes.data ?? [] });
+    } catch (err: unknown) {
+      console.error("[GET /api/orders/:id]", err);
+      return res.status(500).json({ error: "Failed to load order." });
     }
   });
 

@@ -77,36 +77,83 @@ alter table delivery_zones enable row level security;
 alter table orders enable row level security;
 alter table order_items enable row level security;
 
--- Public reads
+-- ── Migration: drop previously created policies before re-creating ────────────
+-- These DROP statements are safe to run on a fresh database (IF EXISTS).
+-- On existing databases they remove the old over-permissive policies so the
+-- hardened ones below take effect cleanly.
+drop policy if exists "public insert orders"      on orders;
+drop policy if exists "public insert order_items" on order_items;
+drop policy if exists "public read orders"        on orders;
+drop policy if exists "public read order_items"   on order_items;
+
+drop policy if exists "auth manage products"      on products;
+drop policy if exists "auth manage settings"      on settings;
+drop policy if exists "auth manage zones"         on delivery_zones;
+drop policy if exists "auth manage orders"        on orders;
+drop policy if exists "auth manage order_items"   on order_items;
+
+drop policy if exists "auth upload product images" on storage.objects;
+drop policy if exists "auth update product images" on storage.objects;
+drop policy if exists "auth delete product images" on storage.objects;
+
+-- Public reads for catalog data (products, settings, zones)
+-- Customers need to browse products and see delivery options
 create policy "public read products" on products for select using (true);
 create policy "public read settings" on settings for select using (true);
 create policy "public read zones" on delivery_zones for select using (true);
 
--- Public writes for orders (customers can create orders)
-create policy "public insert orders" on orders for insert with check (true);
-create policy "public insert order_items" on order_items for insert with check (true);
-create policy "public read orders" on orders for select using (true);
-create policy "public read order_items" on order_items for select using (true);
+-- Orders and order_items: no public access.
+-- All order reads go through the backend server (service role key).
+-- All order inserts go through the backend server (service role key).
+-- Direct client access is intentionally prohibited.
 
--- Admin writes (authenticated users can do everything)
-create policy "auth manage products" on products for all using (auth.role() = 'authenticated');
-create policy "auth manage settings" on settings for all using (auth.role() = 'authenticated');
-create policy "auth manage zones" on delivery_zones for all using (auth.role() = 'authenticated');
-create policy "auth manage orders" on orders for all using (auth.role() = 'authenticated');
-create policy "auth manage order_items" on order_items for all using (auth.role() = 'authenticated');
+-- Admin-only writes: only users with app_metadata.role = 'admin' (set via
+-- Supabase dashboard or service-role API — not settable by users themselves)
+-- can mutate catalog data and manage orders.
+create policy "admin manage products"
+  on products for all
+  using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
+create policy "admin manage settings"
+  on settings for all
+  using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
+create policy "admin manage zones"
+  on delivery_zones for all
+  using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
+create policy "admin manage orders"
+  on orders for all
+  using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
+create policy "admin manage order_items"
+  on order_items for all
+  using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
 
 -- Storage policy
 create policy "public read product images"
   on storage.objects for select using (bucket_id = 'product-images');
-create policy "auth upload product images"
+
+create policy "admin upload product images"
   on storage.objects for insert
-  with check (bucket_id = 'product-images' and auth.role() = 'authenticated');
-create policy "auth update product images"
+  with check (
+    bucket_id = 'product-images'
+    and (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+  );
+
+create policy "admin update product images"
   on storage.objects for update
-  using (bucket_id = 'product-images' and auth.role() = 'authenticated');
-create policy "auth delete product images"
+  using (
+    bucket_id = 'product-images'
+    and (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+  );
+
+create policy "admin delete product images"
   on storage.objects for delete
-  using (bucket_id = 'product-images' and auth.role() = 'authenticated');
+  using (
+    bucket_id = 'product-images'
+    and (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+  );
 
 -- Seed: initial settings row
 insert into settings (currency_code, currency_symbol, delivery_mode, flat_fee, min_order)
@@ -176,3 +223,15 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure handle_new_user();
+
+-- ── ADMIN SETUP INSTRUCTIONS ──────────────────────────────────────────────────
+-- To grant a user admin access, run the following in the Supabase SQL Editor
+-- (replace <user-uuid> with the actual user's UUID from auth.users):
+--
+--   UPDATE auth.users
+--   SET raw_app_meta_data = raw_app_meta_data || '{"role": "admin"}'::jsonb
+--   WHERE id = '<user-uuid>';
+--
+-- This sets app_metadata.role = 'admin' in the user's JWT.
+-- app_metadata can ONLY be set by the service role — regular users cannot
+-- modify it, making it safe to use for privilege escalation checks.
