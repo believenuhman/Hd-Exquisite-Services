@@ -201,8 +201,15 @@ async function createServerOrder(input) {
     priceById.set(p.id, { name: p.name, price: Number(p.price ?? 0), stock_qty: Number(p.stock_qty ?? 0) });
   }
   for (const it of cleanItems) {
-    if (!priceById.has(it.product_id)) {
+    const p = priceById.get(it.product_id);
+    if (!p) {
       throw new Error(`Product ${it.product_id} is not available.`);
+    }
+    if (p.stock_qty <= 0) {
+      throw new Error(`"${p.name}" is out of stock.`);
+    }
+    if (it.quantity > p.stock_qty) {
+      throw new Error(`Only ${p.stock_qty} of "${p.name}" available; you requested ${it.quantity}.`);
     }
   }
   let subtotal = 0;
