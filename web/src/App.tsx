@@ -11,6 +11,7 @@ import { Welcome } from "@/pages/auth/Welcome";
 import { Login } from "@/pages/auth/Login";
 import { Signup } from "@/pages/auth/Signup";
 import { ForgotPassword } from "@/pages/auth/ForgotPassword";
+import { ResetPassword } from "@/pages/auth/ResetPassword";
 import { Home } from "@/pages/Home";
 import { Search } from "@/pages/Search";
 import { Cart } from "@/pages/Cart";
@@ -37,7 +38,7 @@ const NO_NAV_PREFIXES = ["/checkout", "/product/", "/order-tracking/", "/auth/",
 
 function AppInner() {
   const { verified } = useAgeGate();
-  const { loading, user, isGuest } = useAuth();
+  const { loading, user, isGuest, isRecoveryMode } = useAuth();
   const [splash, setSplash] = useState(true);
   const location = useLocation();
   const isNoNavRoute = NO_NAV_PREFIXES.some((p) => location.pathname.startsWith(p));
@@ -56,6 +57,11 @@ function AppInner() {
     location.pathname.startsWith("/payment-cancelled") ||
     location.pathname.startsWith("/payment/");
 
+  // Recovery sessions must be handled on the dedicated reset-password page only.
+  if (isRecoveryMode && location.pathname !== "/auth/reset-password") {
+    return <Navigate to="/auth/reset-password" replace />;
+  }
+
   if (!user && !isGuest && !isPaymentResultRoute &&
       location.pathname !== "/auth/welcome" &&
       !location.pathname.startsWith("/auth")) {
@@ -69,6 +75,7 @@ function AppInner() {
         <Route path="/auth/login" element={<Login />} />
         <Route path="/auth/signup" element={<Signup />} />
         <Route path="/auth/forgot-password" element={<ForgotPassword />} />
+        <Route path="/auth/reset-password" element={<ResetPassword />} />
         <Route path="/" element={<Home />} />
         <Route path="/search" element={<Search />} />
         <Route path="/cart" element={<Cart />} />

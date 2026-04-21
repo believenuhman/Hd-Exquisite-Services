@@ -14,7 +14,11 @@ export function ForgotPassword() {
   const handleReset = async () => {
     if (!email.trim()) return setError("Please enter your email.");
     setLoading(true);
-    const { error: err } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase());
+    const redirectTo = `${window.location.origin}/auth/reset-password`;
+    const { error: err } = await supabase.auth.resetPasswordForEmail(
+      email.trim().toLowerCase(),
+      { redirectTo }
+    );
     setLoading(false);
     if (err) setError(err.message);
     else setSent(true);
