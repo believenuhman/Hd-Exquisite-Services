@@ -165,10 +165,21 @@ async function getOrderById(orderId) {
 }
 async function bindPayPalOrderId(orderId, paypalOrderId) {
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from("orders").update({ paypal_order_id: paypalOrderId }).eq("id", orderId);
+  const { data, error } = await supabase.from("orders").update({ paypal_order_id: paypalOrderId }).eq("id", orderId).is("paypal_order_id", null).select("id").maybeSingle();
   if (error) {
     console.error("[payment] bindPayPalOrderId error:", error);
     throw new Error("Failed to bind PayPal order ID: " + error.message);
+  }
+  if (!data) {
+    const existing = await getOrderById(orderId);
+    if (!existing) throw new Error("Order not found when attempting to bind PayPal order.");
+    if (existing.paypal_order_id && existing.paypal_order_id !== paypalOrderId) {
+      console.warn(
+        `[paypal] BIND_CONFLICT orderId=${orderId} existingPaypalId=${existing.paypal_order_id} attemptedPaypalId=${paypalOrderId}`
+      );
+      throw new Error("Order is already bound to a different PayPal payment session.");
+    }
+    console.log(`[paypal] bindPayPalOrderId idempotent: orderId=${orderId} paypalOrderId=${paypalOrderId}`);
   }
 }
 async function createServerOrder(input) {
@@ -207,11 +218,11 @@ async function createServerOrder(input) {
     if (!zone || zone.is_active === false) throw new Error("Selected delivery zone is not available.");
     deliveryFee = Number(zone.fee ?? 0);
   } else {
-    const { data: settings } = await supabase.from("app_settings").select("flat_fee").limit(1).maybeSingle();
+    const { data: settings } = await supabase.from("settings").select("flat_fee").limit(1).maybeSingle();
     deliveryFee = Number(settings?.flat_fee ?? 0);
   }
   deliveryFee = Math.round(deliveryFee * 100) / 100;
-  const { data: settingsRow } = await supabase.from("app_settings").select("currency_code,currency_symbol").limit(1).maybeSingle();
+  const { data: settingsRow } = await supabase.from("settings").select("currency_code,currency_symbol").limit(1).maybeSingle();
   const currencyCode = settingsRow?.currency_code ?? "USD";
   const currencySymbol = settingsRow?.currency_symbol ?? "$";
   const total = Math.round((subtotal + deliveryFee) * 100) / 100;
@@ -324,6 +335,9 @@ async function registerRoutes(app2) {
       if (order.payment_method !== "online_card") return res.status(400).json({ error: "Order is not an online payment." });
       if (order.payment_status === "paid") return res.status(409).json({ error: "Order is already paid." });
       if (order.payment_status === "cancelled") return res.status(409).json({ error: "Order is cancelled." });
+      if (order.paypal_order_id) {
+        return res.status(409).json({ error: "A PayPal payment session is already open for this order." });
+      }
       const returnUrl = `${origin}/payment-success`;
       const cancelUrl = `${origin}/payment-cancelled`;
       const result = await createPayPalOrder({
