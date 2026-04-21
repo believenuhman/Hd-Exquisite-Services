@@ -7,8 +7,8 @@ const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
 export function PaymentFailed() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const queryOrderId = searchParams.get("orderId") ?? "";
-  const reason       = searchParams.get("reason")  ?? "";
+  const paypalToken = searchParams.get("token")  ?? "";
+  const reason      = searchParams.get("reason") ?? "";
 
   const [orderId, setOrderId]   = useState<string>("");
   const [updating, setUpdating] = useState(true);
@@ -16,21 +16,22 @@ export function PaymentFailed() {
   useEffect(() => { markFailed(); }, []);
 
   const markFailed = async () => {
-    const storedId   = localStorage.getItem(PENDING_ORDER_KEY) ?? "";
-    const resolvedId = storedId || queryOrderId;
-    setOrderId(resolvedId);
+    const storedId = localStorage.getItem(PENDING_ORDER_KEY) ?? "";
+    if (storedId) setOrderId(storedId);
 
-    if (resolvedId) {
+    // Only the PayPal token authorizes marking the bound order as failed.
+    if (paypalToken) {
       try {
         await fetch("/api/paypal/fail-order", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orderId: resolvedId }),
+          body: JSON.stringify({ paypalOrderId: paypalToken }),
         });
       } catch (err) {
         console.error("[payment-failed] Could not notify backend:", err);
       }
     }
+    localStorage.removeItem(PENDING_ORDER_KEY);
     setUpdating(false);
   };
 

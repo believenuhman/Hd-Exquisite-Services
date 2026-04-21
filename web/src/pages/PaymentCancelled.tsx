@@ -7,7 +7,7 @@ const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
 export function PaymentCancelled() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const queryOrderId = searchParams.get("orderId") ?? "";
+  const paypalToken = searchParams.get("token") ?? "";
 
   const [orderId, setOrderId]   = useState<string>("");
   const [updating, setUpdating] = useState(true);
@@ -15,21 +15,25 @@ export function PaymentCancelled() {
   useEffect(() => { markCancelled(); }, []);
 
   const markCancelled = async () => {
-    const storedId   = localStorage.getItem(PENDING_ORDER_KEY) ?? "";
-    const resolvedId = storedId || queryOrderId;
-    setOrderId(resolvedId);
+    // Show the local order id (if any) for the UI link to tracking
+    const storedId = localStorage.getItem(PENDING_ORDER_KEY) ?? "";
+    if (storedId) setOrderId(storedId);
 
-    if (resolvedId) {
+    // Only the PayPal token (returned by PayPal in the redirect) authorizes
+    // marking the bound order as cancelled — the local order id alone is not
+    // enough, so anonymous attackers can't cancel arbitrary orders.
+    if (paypalToken) {
       try {
         await fetch("/api/paypal/cancel-order", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orderId: resolvedId }),
+          body: JSON.stringify({ paypalOrderId: paypalToken }),
         });
       } catch (err) {
         console.warn("[payment-cancelled] Could not notify backend:", err);
       }
     }
+    localStorage.removeItem(PENDING_ORDER_KEY);
     setUpdating(false);
   };
 

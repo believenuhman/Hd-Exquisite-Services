@@ -55,47 +55,28 @@ export function Checkout() {
     return null;
   };
 
-  const createOrder = async (method: PaymentMethod) => {
-    const baseFields = {
-      customer_name:    name.trim(),
-      customer_phone:   phone.trim(),
-      delivery_address: address.trim(),
-      delivery_notes:   notes.trim() || null,
-      age_confirmed:    true,
-      status:           "received",
-      subtotal,
-      delivery_fee:     deliveryFee,
-      total,
-      currency_code:    currencyCode,
-      currency_symbol:  sym,
-      zone_id:          selectedZone?.id ?? null,
-    };
-
-    const paymentFields = {
-      payment_method: method,
-      payment_status: "pending",
-      gateway_name:   method === "online_card" ? "paypal" : null,
-    };
-
-    const res = await supabase
-      .from("orders")
-      .insert({ ...baseFields, ...paymentFields })
-      .select()
-      .single();
-
-    if (res.error) throw new Error("Failed to create order: " + res.error.message);
-
-    const order = res.data;
-    await supabase.from("order_items").insert(
-      items.map((item) => ({
-        order_id:   order.id,
-        product_id: item.product.id,
-        name:       item.product.name,
-        qty:        item.quantity,
-        unit_price: item.product.price,
-      }))
-    );
-    return order;
+  // Server-authoritative order creation. The server reads product prices from
+  // the database — totals here are only for UI display and are NEVER trusted
+  // by the backend.
+  const createOrder = async (method: PaymentMethod): Promise<{ orderId: string; total: number; currencyCode: string }> => {
+    const apiRes = await fetch("/api/orders/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: items.map((it) => ({ product_id: it.product.id, quantity: it.quantity })),
+        customer_name:    name.trim(),
+        customer_phone:   phone.trim(),
+        delivery_address: address.trim(),
+        delivery_notes:   notes.trim() || null,
+        zone_id:          selectedZone?.id ?? null,
+        payment_method:   method,
+      }),
+    });
+    if (!apiRes.ok) {
+      const err = await apiRes.json().catch(() => ({ error: "Unknown error" })) as { error?: string };
+      throw new Error(err.error ?? `Order creation failed (${apiRes.status})`);
+    }
+    return apiRes.json() as Promise<{ orderId: string; total: number; currencyCode: string }>;
   };
 
   const handlePlaceOrder = async () => {
@@ -117,21 +98,19 @@ export function Checkout() {
         clearCart();
         submittingRef.current = false;
         setLoading(false);
-        navigate(`/order-tracking/${order.id}`);
+        navigate(`/order-tracking/${order.orderId}`);
         return;
       }
 
       // ── PayPal online payment ──────────────────────────────────────────────
-      // 1. Ask the backend to create a PayPal order and give us the approval URL
+      // Ask the backend to create a PayPal order. We send ONLY the order id
+      // and origin — the backend reads the authoritative amount from the DB.
       const apiRes = await fetch("/api/paypal/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          orderId:     order.id,
-          amount:      total,
-          currency:    currencyCode,
-          description: `HD Xquisite Liquors Order #${order.id.slice(0, 8).toUpperCase()}`,
-          origin:      window.location.origin,
+          orderId: order.orderId,
+          origin:  window.location.origin,
         }),
       });
 
@@ -142,8 +121,8 @@ export function Checkout() {
 
       const { approvalUrl } = await apiRes.json() as { paypalOrderId: string; approvalUrl: string };
 
-      // 2. Save the Supabase order ID so PaymentSuccess can capture & update it
-      localStorage.setItem(PENDING_ORDER_KEY, order.id);
+      // Save the Supabase order ID so PaymentSuccess can navigate to tracking
+      localStorage.setItem(PENDING_ORDER_KEY, order.orderId);
       clearCart();
 
       // 3. Redirect to PayPal — keep loading=true, we're leaving the page

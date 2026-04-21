@@ -106,44 +106,156 @@ async function capturePayPalOrder(paypalOrderId) {
     throw new Error(`PayPal capture failed (${res.status}): ${err}`);
   }
   const data = await res.json();
-  const capture = data.purchase_units?.[0]?.payments?.captures?.[0];
+  const unit = data.purchase_units?.[0];
+  const capture = unit?.payments?.captures?.[0];
   const captureId = capture?.id ?? paypalOrderId;
   const success = data.status === "COMPLETED" || capture?.status === "COMPLETED";
-  console.log(`[paypal] Captured order ${paypalOrderId}: status=${data.status}, captureId=${captureId}`);
-  return { success, captureId, status: data.status };
+  const amount = Number(capture?.amount?.value ?? 0);
+  const currency = (capture?.amount?.currency_code ?? "").toUpperCase();
+  const referenceId = unit?.reference_id ?? "";
+  console.log(`[paypal] Captured ${paypalOrderId}: status=${data.status}, captureId=${captureId}, amount=${amount} ${currency}, ref=${referenceId}`);
+  return { success, captureId, status: data.status, amount, currency, referenceId };
 }
 async function updateOrderPaid(orderId, reference, gateway) {
-  try {
-    const supabase = getSupabaseAdmin();
-    const { error } = await supabase.from("orders").update({
-      payment_status: "paid",
-      payment_reference: reference,
-      gateway_name: gateway,
-      paid_at: (/* @__PURE__ */ new Date()).toISOString()
-    }).eq("id", orderId);
-    if (error) console.error("[payment] updateOrderPaid error:", error);
-  } catch (err) {
-    console.error("[payment] Failed to update order paid status:", err);
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("orders").update({
+    payment_status: "paid",
+    payment_reference: reference,
+    gateway_name: gateway,
+    paid_at: (/* @__PURE__ */ new Date()).toISOString()
+  }).eq("id", orderId);
+  if (error) {
+    console.error("[payment] updateOrderPaid error:", error);
+    throw new Error("Failed to mark order paid: " + error.message);
   }
 }
 async function updateOrderCancelled(orderId) {
-  try {
-    const supabase = getSupabaseAdmin();
-    await supabase.from("orders").update({ payment_status: "cancelled" }).eq("id", orderId);
-  } catch (err) {
-    console.error("[payment] Failed to update order cancelled status:", err);
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("orders").update({ payment_status: "cancelled" }).eq("id", orderId).eq("payment_status", "pending");
+  if (error) {
+    console.error("[payment] updateOrderCancelled error:", error);
+    throw new Error("Failed to cancel order: " + error.message);
   }
 }
 async function updateOrderFailed(orderId) {
-  try {
-    const supabase = getSupabaseAdmin();
-    await supabase.from("orders").update({ payment_status: "failed" }).eq("id", orderId);
-  } catch (err) {
-    console.error("[payment] Failed to update order failed status:", err);
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("orders").update({ payment_status: "failed" }).eq("id", orderId).eq("payment_status", "pending");
+  if (error) {
+    console.error("[payment] updateOrderFailed error:", error);
+    throw new Error("Failed to fail order: " + error.message);
   }
+}
+async function getOrderByPayPalId(paypalOrderId) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.from("orders").select("id,total,currency_code,payment_status,payment_method,paypal_order_id").eq("paypal_order_id", paypalOrderId).maybeSingle();
+  if (error) {
+    console.error("[payment] getOrderByPayPalId error:", error);
+    return null;
+  }
+  return data ?? null;
+}
+async function getOrderById(orderId) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.from("orders").select("id,total,currency_code,payment_status,payment_method,paypal_order_id").eq("id", orderId).maybeSingle();
+  if (error) {
+    console.error("[payment] getOrderById error:", error);
+    return null;
+  }
+  return data ?? null;
+}
+async function bindPayPalOrderId(orderId, paypalOrderId) {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("orders").update({ paypal_order_id: paypalOrderId }).eq("id", orderId);
+  if (error) {
+    console.error("[payment] bindPayPalOrderId error:", error);
+    throw new Error("Failed to bind PayPal order ID: " + error.message);
+  }
+}
+async function createServerOrder(input) {
+  const supabase = getSupabaseAdmin();
+  if (!Array.isArray(input.items) || input.items.length === 0) {
+    throw new Error("Order must contain at least one item.");
+  }
+  const cleanItems = input.items.map((it) => ({
+    product_id: String(it.product_id ?? "").trim(),
+    quantity: Math.max(0, Math.floor(Number(it.quantity ?? 0)))
+  })).filter((it) => it.product_id && it.quantity > 0);
+  if (cleanItems.length === 0) throw new Error("All items have zero quantity.");
+  const productIds = [...new Set(cleanItems.map((it) => it.product_id))];
+  const { data: products, error: prodErr } = await supabase.from("products").select("id,name,price,stock_qty").in("id", productIds);
+  if (prodErr) throw new Error("Failed to load products: " + prodErr.message);
+  if (!products || products.length === 0) throw new Error("No matching products found.");
+  const priceById = /* @__PURE__ */ new Map();
+  for (const p of products) {
+    priceById.set(p.id, { name: p.name, price: Number(p.price ?? 0), stock_qty: Number(p.stock_qty ?? 0) });
+  }
+  for (const it of cleanItems) {
+    if (!priceById.has(it.product_id)) {
+      throw new Error(`Product ${it.product_id} is not available.`);
+    }
+  }
+  let subtotal = 0;
+  for (const it of cleanItems) {
+    const p = priceById.get(it.product_id);
+    subtotal += p.price * it.quantity;
+  }
+  subtotal = Math.round(subtotal * 100) / 100;
+  let deliveryFee = 0;
+  if (input.zone_id) {
+    const { data: zone, error: zoneErr } = await supabase.from("delivery_zones").select("fee,is_active").eq("id", input.zone_id).maybeSingle();
+    if (zoneErr) throw new Error("Failed to load delivery zone: " + zoneErr.message);
+    if (!zone || zone.is_active === false) throw new Error("Selected delivery zone is not available.");
+    deliveryFee = Number(zone.fee ?? 0);
+  } else {
+    const { data: settings } = await supabase.from("app_settings").select("flat_fee").limit(1).maybeSingle();
+    deliveryFee = Number(settings?.flat_fee ?? 0);
+  }
+  deliveryFee = Math.round(deliveryFee * 100) / 100;
+  const { data: settingsRow } = await supabase.from("app_settings").select("currency_code,currency_symbol").limit(1).maybeSingle();
+  const currencyCode = settingsRow?.currency_code ?? "USD";
+  const currencySymbol = settingsRow?.currency_symbol ?? "$";
+  const total = Math.round((subtotal + deliveryFee) * 100) / 100;
+  const insertRes = await supabase.from("orders").insert({
+    customer_name: String(input.customer_name ?? "").trim(),
+    customer_phone: String(input.customer_phone ?? "").trim(),
+    delivery_address: String(input.delivery_address ?? "").trim(),
+    delivery_notes: input.delivery_notes ? String(input.delivery_notes).trim() : null,
+    age_confirmed: true,
+    status: "received",
+    subtotal,
+    delivery_fee: deliveryFee,
+    total,
+    currency_code: currencyCode,
+    currency_symbol: currencySymbol,
+    zone_id: input.zone_id ?? null,
+    payment_method: input.payment_method,
+    payment_status: "pending",
+    gateway_name: input.payment_method === "online_card" ? "paypal" : null
+  }).select().single();
+  if (insertRes.error) throw new Error("Failed to create order: " + insertRes.error.message);
+  const order = insertRes.data;
+  const orderItems = cleanItems.map((it) => {
+    const p = priceById.get(it.product_id);
+    return {
+      order_id: order.id,
+      product_id: it.product_id,
+      name: p.name,
+      qty: it.quantity,
+      unit_price: p.price
+    };
+  });
+  const itemsRes = await supabase.from("order_items").insert(orderItems);
+  if (itemsRes.error) {
+    await supabase.from("orders").delete().eq("id", order.id);
+    throw new Error("Failed to create order items: " + itemsRes.error.message);
+  }
+  return { orderId: order.id, subtotal, deliveryFee, total, currencyCode };
 }
 
 // server/routes.ts
+function amountsMatch(a, b) {
+  return Math.round(Number(a) * 100) === Math.round(Number(b) * 100);
+}
 async function registerRoutes(app2) {
   app2.get("/api/health", (_req, res) => {
     res.json({
@@ -158,29 +270,62 @@ async function registerRoutes(app2) {
       environment: (process.env.PAYPAL_ENV ?? "sandbox").toLowerCase()
     });
   });
+  app2.post("/api/orders/create", async (req, res) => {
+    try {
+      const body = req.body;
+      const method = body.payment_method === "online_card" ? "online_card" : "cash_on_delivery";
+      if (!body.customer_name?.trim()) return res.status(400).json({ error: "Name is required." });
+      if (!body.customer_phone?.trim()) return res.status(400).json({ error: "Phone is required." });
+      if (!body.delivery_address?.trim()) return res.status(400).json({ error: "Delivery address is required." });
+      if (!Array.isArray(body.items) || body.items.length === 0) {
+        return res.status(400).json({ error: "Cart is empty." });
+      }
+      const result = await createServerOrder({
+        items: (body.items ?? []).map((it) => ({
+          product_id: String(it.product_id ?? ""),
+          quantity: Number(it.quantity ?? 0)
+        })),
+        customer_name: body.customer_name,
+        customer_phone: body.customer_phone,
+        delivery_address: body.delivery_address,
+        delivery_notes: body.delivery_notes ?? null,
+        zone_id: body.zone_id ?? null,
+        payment_method: method
+      });
+      return res.json(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to create order";
+      console.error("[POST /api/orders/create]", err);
+      return res.status(400).json({ error: message });
+    }
+  });
   app2.post("/api/paypal/create-order", async (req, res) => {
     try {
-      const { orderId, amount, currency, description, origin } = req.body;
-      if (!orderId || !amount || !currency || !origin) {
-        return res.status(400).json({
-          error: "Missing required fields: orderId, amount, currency, origin"
-        });
+      const { orderId, origin } = req.body;
+      if (!orderId || !origin) {
+        return res.status(400).json({ error: "Missing required fields: orderId, origin" });
       }
       if (!isPayPalConfigured()) {
-        return res.status(503).json({
-          error: "PayPal is not configured on this server. Contact the store owner."
-        });
+        return res.status(503).json({ error: "PayPal is not configured on this server." });
       }
+      const order = await getOrderById(orderId);
+      if (!order) return res.status(404).json({ error: "Order not found." });
+      if (order.payment_method !== "online_card") return res.status(400).json({ error: "Order is not an online payment." });
+      if (order.payment_status === "paid") return res.status(409).json({ error: "Order is already paid." });
+      if (order.payment_status === "cancelled") return res.status(409).json({ error: "Order is cancelled." });
       const returnUrl = `${origin}/payment-success`;
       const cancelUrl = `${origin}/payment-cancelled`;
       const result = await createPayPalOrder({
-        orderId,
-        amount,
-        currency,
-        description: description || "HD Xquisite Liquors Order",
+        orderId: order.id,
+        amount: order.total,
+        // ← from DB, not client
+        currency: order.currency_code,
+        // ← from DB, not client
+        description: `HD Xquisite Liquors Order #${order.id.slice(0, 8).toUpperCase()}`,
         returnUrl,
         cancelUrl
       });
+      await bindPayPalOrderId(order.id, result.paypalOrderId);
       return res.json({
         paypalOrderId: result.paypalOrderId,
         approvalUrl: result.approvalUrl
@@ -193,23 +338,42 @@ async function registerRoutes(app2) {
   });
   app2.post("/api/paypal/capture-order", async (req, res) => {
     try {
-      const { paypalOrderId, orderId } = req.body;
-      if (!paypalOrderId || !orderId) {
-        return res.status(400).json({
-          error: "Missing required fields: paypalOrderId, orderId"
-        });
+      const { paypalOrderId } = req.body;
+      if (!paypalOrderId) {
+        return res.status(400).json({ error: "Missing required field: paypalOrderId" });
       }
       if (!isPayPalConfigured()) {
-        return res.status(503).json({ error: "PayPal is not configured" });
+        return res.status(503).json({ error: "PayPal is not configured." });
+      }
+      const order = await getOrderByPayPalId(paypalOrderId);
+      if (!order) {
+        return res.status(404).json({ error: "No matching order found for this PayPal payment." });
+      }
+      if (order.payment_status === "paid") {
+        return res.json({ success: true, orderId: order.id, status: "ALREADY_PAID" });
+      }
+      if (order.payment_status === "cancelled" || order.payment_status === "failed") {
+        return res.status(409).json({ error: `Order is ${order.payment_status} and cannot be captured.` });
       }
       const result = await capturePayPalOrder(paypalOrderId);
-      if (result.success) {
-        await updateOrderPaid(orderId, result.captureId, "paypal");
-        return res.json({ success: true, captureId: result.captureId, status: result.status });
-      } else {
-        await updateOrderFailed(orderId);
-        return res.status(402).json({ success: false, status: result.status, error: "Payment capture was not completed" });
+      if (!result.success) {
+        await updateOrderFailed(order.id);
+        return res.status(402).json({ success: false, status: result.status, error: "Payment capture was not completed." });
       }
+      if (result.referenceId && result.referenceId !== order.id) {
+        console.error(`[paypal] Reference mismatch: expected=${order.id}, got=${result.referenceId}`);
+        return res.status(409).json({ error: "Payment reference mismatch." });
+      }
+      if (!amountsMatch(result.amount, order.total)) {
+        console.error(`[paypal] Amount mismatch: expected=${order.total}, got=${result.amount}`);
+        return res.status(409).json({ error: "Payment amount mismatch." });
+      }
+      if (result.currency.toUpperCase() !== order.currency_code.toUpperCase()) {
+        console.error(`[paypal] Currency mismatch: expected=${order.currency_code}, got=${result.currency}`);
+        return res.status(409).json({ error: "Payment currency mismatch." });
+      }
+      await updateOrderPaid(order.id, result.captureId, "paypal");
+      return res.json({ success: true, orderId: order.id, captureId: result.captureId, status: result.status });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to capture PayPal order";
       console.error("[POST /api/paypal/capture-order]", err);
@@ -218,10 +382,15 @@ async function registerRoutes(app2) {
   });
   app2.post("/api/paypal/cancel-order", async (req, res) => {
     try {
-      const { orderId } = req.body;
-      if (!orderId) return res.status(400).json({ error: "Missing orderId" });
-      await updateOrderCancelled(orderId);
-      return res.json({ success: true });
+      const { paypalOrderId } = req.body;
+      if (!paypalOrderId) return res.status(400).json({ error: "Missing paypalOrderId" });
+      const order = await getOrderByPayPalId(paypalOrderId);
+      if (!order) return res.status(404).json({ error: "No matching order." });
+      if (order.payment_status === "paid") {
+        return res.status(409).json({ error: "Order is already paid and cannot be cancelled here." });
+      }
+      await updateOrderCancelled(order.id);
+      return res.json({ success: true, orderId: order.id });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to cancel order";
       console.error("[POST /api/paypal/cancel-order]", err);
@@ -230,10 +399,15 @@ async function registerRoutes(app2) {
   });
   app2.post("/api/paypal/fail-order", async (req, res) => {
     try {
-      const { orderId } = req.body;
-      if (!orderId) return res.status(400).json({ error: "Missing orderId" });
-      await updateOrderFailed(orderId);
-      return res.json({ success: true });
+      const { paypalOrderId } = req.body;
+      if (!paypalOrderId) return res.status(400).json({ error: "Missing paypalOrderId" });
+      const order = await getOrderByPayPalId(paypalOrderId);
+      if (!order) return res.status(404).json({ error: "No matching order." });
+      if (order.payment_status === "paid") {
+        return res.status(409).json({ error: "Order is already paid." });
+      }
+      await updateOrderFailed(order.id);
+      return res.json({ success: true, orderId: order.id });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to update order";
       console.error("[POST /api/paypal/fail-order]", err);

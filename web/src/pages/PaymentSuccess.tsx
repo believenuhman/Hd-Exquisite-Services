@@ -24,51 +24,45 @@ export function PaymentSuccess() {
   }, []);
 
   const confirmPayment = async () => {
-    // Recover Supabase order ID
-    const storedId   = localStorage.getItem(PENDING_ORDER_KEY) ?? "";
-    const resolvedId = storedId || queryOrderId;
-
-    if (!resolvedId) {
+    // We need the PayPal token to confirm payment. Without it we can't capture.
+    if (!paypalToken) {
+      const fallbackId = localStorage.getItem(PENDING_ORDER_KEY) ?? queryOrderId;
+      if (fallbackId) setOrderId(fallbackId);
+      localStorage.removeItem(PENDING_ORDER_KEY);
       setStatus("error");
       return;
     }
 
-    setOrderId(resolvedId);
-
-    // If there's no PayPal token we can't capture — show fallback success
-    if (!paypalToken) {
-      // Still clear the pending key
-      localStorage.removeItem(PENDING_ORDER_KEY);
-      setStatus("confirmed");
-      return;
-    }
-
     try {
-      // Call our backend to capture the PayPal payment and mark the order paid
+      // Server captures, verifies amount/currency/binding, and tells us
+      // which local order this payment belongs to.
       const res = await fetch("/api/paypal/capture-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paypalOrderId: paypalToken, orderId: resolvedId }),
+        body: JSON.stringify({ paypalOrderId: paypalToken }),
       });
 
-      const data = await res.json() as { success?: boolean; captureId?: string; error?: string };
+      const data = await res.json() as { success?: boolean; orderId?: string; captureId?: string; error?: string };
 
       if (res.ok && data.success) {
-        setCaptureId(data.captureId ?? paypalToken);
+        if (data.orderId)   setOrderId(data.orderId);
+        if (data.captureId) setCaptureId(data.captureId);
+        localStorage.removeItem(PENDING_ORDER_KEY);
+        setStatus("confirmed");
       } else {
-        // Capture might have already happened or order is already paid — treat as success
-        console.warn("[payment-success] capture response:", data);
-        setCaptureId(paypalToken);
+        console.warn("[payment-success] capture failed:", data);
+        // Fall back to the locally stored order id for the error screen link
+        const fallbackId = localStorage.getItem(PENDING_ORDER_KEY) ?? queryOrderId;
+        if (fallbackId) setOrderId(fallbackId);
+        localStorage.removeItem(PENDING_ORDER_KEY);
+        setStatus("error");
       }
-
-      localStorage.removeItem(PENDING_ORDER_KEY);
-      setStatus("confirmed");
     } catch (err) {
       console.error("[payment-success] Failed to capture PayPal order:", err);
-      // Show success UI anyway — the user approved it on PayPal's end.
-      // A webhook or retry can confirm it later.
+      const fallbackId = localStorage.getItem(PENDING_ORDER_KEY) ?? queryOrderId;
+      if (fallbackId) setOrderId(fallbackId);
       localStorage.removeItem(PENDING_ORDER_KEY);
-      setStatus("confirmed");
+      setStatus("error");
     }
   };
 

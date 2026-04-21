@@ -29,26 +29,6 @@ export function isPayPalConfigured(): boolean {
   return Boolean(PAYPAL_CLIENT_ID && PAYPAL_CLIENT_SECRET);
 }
 
-export function getPayPalDiagnostics(): {
-  configured: boolean;
-  environment: string;
-  clientIdLength: number;
-  clientIdPrefix: string;
-  secretLength: number;
-  secretPrefix: string;
-  apiBase: string;
-} {
-  return {
-    configured: isPayPalConfigured(),
-    environment: PAYPAL_ENV,
-    clientIdLength: PAYPAL_CLIENT_ID.length,
-    clientIdPrefix: PAYPAL_CLIENT_ID.slice(0, 7) + "...",
-    secretLength: PAYPAL_CLIENT_SECRET.length,
-    secretPrefix: PAYPAL_CLIENT_SECRET.slice(0, 4) + "...",
-    apiBase: getPayPalBase(),
-  };
-}
-
 // ─── PayPal OAuth ─────────────────────────────────────────────────────────────
 
 export async function getPayPalAccessToken(): Promise<string> {
@@ -157,6 +137,9 @@ export type CapturePayPalOrderResult = {
   success: boolean;
   captureId: string;
   status: string;
+  amount: number;       // amount actually captured by PayPal
+  currency: string;     // currency actually captured by PayPal
+  referenceId: string;  // purchase_units[0].reference_id (our local order id)
 };
 
 export async function capturePayPalOrder(paypalOrderId: string): Promise<CapturePayPalOrderResult> {
@@ -177,49 +160,257 @@ export async function capturePayPalOrder(paypalOrderId: string): Promise<Capture
 
   const data = await res.json() as {
     status: string;
-    purchase_units: { payments: { captures: { id: string; status: string }[] } }[];
+    purchase_units: {
+      reference_id?: string;
+      payments: {
+        captures: {
+          id: string;
+          status: string;
+          amount: { currency_code: string; value: string };
+        }[];
+      };
+    }[];
   };
 
-  const capture = data.purchase_units?.[0]?.payments?.captures?.[0];
-  const captureId = capture?.id ?? paypalOrderId;
-  const success = data.status === "COMPLETED" || capture?.status === "COMPLETED";
+  const unit       = data.purchase_units?.[0];
+  const capture    = unit?.payments?.captures?.[0];
+  const captureId  = capture?.id ?? paypalOrderId;
+  const success    = data.status === "COMPLETED" || capture?.status === "COMPLETED";
+  const amount     = Number(capture?.amount?.value ?? 0);
+  const currency   = (capture?.amount?.currency_code ?? "").toUpperCase();
+  const referenceId = unit?.reference_id ?? "";
 
-  console.log(`[paypal] Captured order ${paypalOrderId}: status=${data.status}, captureId=${captureId}`);
+  console.log(`[paypal] Captured ${paypalOrderId}: status=${data.status}, captureId=${captureId}, amount=${amount} ${currency}, ref=${referenceId}`);
 
-  return { success, captureId, status: data.status };
+  return { success, captureId, status: data.status, amount, currency, referenceId };
 }
 
 // ─── Order status helpers ─────────────────────────────────────────────────────
 
 export async function updateOrderPaid(orderId: string, reference: string, gateway: string): Promise<void> {
-  try {
-    const supabase = getSupabaseAdmin();
-    const { error } = await supabase.from("orders").update({
-      payment_status:    "paid",
-      payment_reference: reference,
-      gateway_name:      gateway,
-      paid_at:           new Date().toISOString(),
-    }).eq("id", orderId);
-    if (error) console.error("[payment] updateOrderPaid error:", error);
-  } catch (err) {
-    console.error("[payment] Failed to update order paid status:", err);
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("orders").update({
+    payment_status:    "paid",
+    payment_reference: reference,
+    gateway_name:      gateway,
+    paid_at:           new Date().toISOString(),
+  }).eq("id", orderId);
+  if (error) {
+    console.error("[payment] updateOrderPaid error:", error);
+    throw new Error("Failed to mark order paid: " + error.message);
   }
 }
 
 export async function updateOrderCancelled(orderId: string): Promise<void> {
-  try {
-    const supabase = getSupabaseAdmin();
-    await supabase.from("orders").update({ payment_status: "cancelled" }).eq("id", orderId);
-  } catch (err) {
-    console.error("[payment] Failed to update order cancelled status:", err);
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("orders")
+    .update({ payment_status: "cancelled" })
+    .eq("id", orderId)
+    .eq("payment_status", "pending"); // never overwrite a paid order
+  if (error) {
+    console.error("[payment] updateOrderCancelled error:", error);
+    throw new Error("Failed to cancel order: " + error.message);
   }
 }
 
 export async function updateOrderFailed(orderId: string): Promise<void> {
-  try {
-    const supabase = getSupabaseAdmin();
-    await supabase.from("orders").update({ payment_status: "failed" }).eq("id", orderId);
-  } catch (err) {
-    console.error("[payment] Failed to update order failed status:", err);
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("orders")
+    .update({ payment_status: "failed" })
+    .eq("id", orderId)
+    .eq("payment_status", "pending"); // never overwrite a paid order
+  if (error) {
+    console.error("[payment] updateOrderFailed error:", error);
+    throw new Error("Failed to fail order: " + error.message);
   }
+}
+
+// ─── Order lookup helpers (binding) ───────────────────────────────────────────
+
+export type LocalOrder = {
+  id: string;
+  total: number;
+  currency_code: string;
+  payment_status: string;
+  payment_method: string;
+  paypal_order_id: string | null;
+};
+
+export async function getOrderByPayPalId(paypalOrderId: string): Promise<LocalOrder | null> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("orders")
+    .select("id,total,currency_code,payment_status,payment_method,paypal_order_id")
+    .eq("paypal_order_id", paypalOrderId)
+    .maybeSingle();
+  if (error) {
+    console.error("[payment] getOrderByPayPalId error:", error);
+    return null;
+  }
+  return (data as LocalOrder) ?? null;
+}
+
+export async function getOrderById(orderId: string): Promise<LocalOrder | null> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("orders")
+    .select("id,total,currency_code,payment_status,payment_method,paypal_order_id")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (error) {
+    console.error("[payment] getOrderById error:", error);
+    return null;
+  }
+  return (data as LocalOrder) ?? null;
+}
+
+export async function bindPayPalOrderId(orderId: string, paypalOrderId: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("orders")
+    .update({ paypal_order_id: paypalOrderId })
+    .eq("id", orderId);
+  if (error) {
+    console.error("[payment] bindPayPalOrderId error:", error);
+    throw new Error("Failed to bind PayPal order ID: " + error.message);
+  }
+}
+
+// ─── Server-side order creation (price authority) ─────────────────────────────
+
+export type OrderItemInput = { product_id: string; quantity: number };
+
+export type CreateOrderInput = {
+  items:            OrderItemInput[];
+  customer_name:    string;
+  customer_phone:   string;
+  delivery_address: string;
+  delivery_notes:   string | null;
+  zone_id:          string | null;
+  payment_method:   "cash_on_delivery" | "online_card";
+};
+
+export type CreateOrderResult = {
+  orderId:       string;
+  subtotal:      number;
+  deliveryFee:   number;
+  total:         number;
+  currencyCode:  string;
+};
+
+export async function createServerOrder(input: CreateOrderInput): Promise<CreateOrderResult> {
+  const supabase = getSupabaseAdmin();
+
+  // 1. Validate items
+  if (!Array.isArray(input.items) || input.items.length === 0) {
+    throw new Error("Order must contain at least one item.");
+  }
+  const cleanItems = input.items
+    .map((it) => ({
+      product_id: String(it.product_id ?? "").trim(),
+      quantity:   Math.max(0, Math.floor(Number(it.quantity ?? 0))),
+    }))
+    .filter((it) => it.product_id && it.quantity > 0);
+  if (cleanItems.length === 0) throw new Error("All items have zero quantity.");
+
+  // 2. Look up authoritative product prices from the database
+  const productIds = [...new Set(cleanItems.map((it) => it.product_id))];
+  const { data: products, error: prodErr } = await supabase
+    .from("products")
+    .select("id,name,price,stock_qty")
+    .in("id", productIds);
+  if (prodErr) throw new Error("Failed to load products: " + prodErr.message);
+  if (!products || products.length === 0) throw new Error("No matching products found.");
+
+  const priceById = new Map<string, { name: string; price: number; stock_qty: number }>();
+  for (const p of products as { id: string; name: string; price: number; stock_qty: number }[]) {
+    priceById.set(p.id, { name: p.name, price: Number(p.price ?? 0), stock_qty: Number(p.stock_qty ?? 0) });
+  }
+  for (const it of cleanItems) {
+    if (!priceById.has(it.product_id)) {
+      throw new Error(`Product ${it.product_id} is not available.`);
+    }
+  }
+
+  // 3. Calculate subtotal from DB prices ONLY
+  let subtotal = 0;
+  for (const it of cleanItems) {
+    const p = priceById.get(it.product_id)!;
+    subtotal += p.price * it.quantity;
+  }
+  subtotal = Math.round(subtotal * 100) / 100;
+
+  // 4. Calculate delivery fee from DB
+  let deliveryFee = 0;
+  if (input.zone_id) {
+    const { data: zone, error: zoneErr } = await supabase
+      .from("delivery_zones")
+      .select("fee,is_active")
+      .eq("id", input.zone_id)
+      .maybeSingle();
+    if (zoneErr) throw new Error("Failed to load delivery zone: " + zoneErr.message);
+    if (!zone || zone.is_active === false) throw new Error("Selected delivery zone is not available.");
+    deliveryFee = Number(zone.fee ?? 0);
+  } else {
+    const { data: settings } = await supabase
+      .from("app_settings")
+      .select("flat_fee")
+      .limit(1)
+      .maybeSingle();
+    deliveryFee = Number((settings as { flat_fee?: number } | null)?.flat_fee ?? 0);
+  }
+  deliveryFee = Math.round(deliveryFee * 100) / 100;
+
+  // 5. Currency from app_settings
+  const { data: settingsRow } = await supabase
+    .from("app_settings")
+    .select("currency_code,currency_symbol")
+    .limit(1)
+    .maybeSingle();
+  const currencyCode   = (settingsRow as { currency_code?: string } | null)?.currency_code ?? "USD";
+  const currencySymbol = (settingsRow as { currency_symbol?: string } | null)?.currency_symbol ?? "$";
+
+  const total = Math.round((subtotal + deliveryFee) * 100) / 100;
+
+  // 6. Insert order
+  const insertRes = await supabase.from("orders").insert({
+    customer_name:    String(input.customer_name ?? "").trim(),
+    customer_phone:   String(input.customer_phone ?? "").trim(),
+    delivery_address: String(input.delivery_address ?? "").trim(),
+    delivery_notes:   input.delivery_notes ? String(input.delivery_notes).trim() : null,
+    age_confirmed:    true,
+    status:           "received",
+    subtotal,
+    delivery_fee:     deliveryFee,
+    total,
+    currency_code:    currencyCode,
+    currency_symbol:  currencySymbol,
+    zone_id:          input.zone_id ?? null,
+    payment_method:   input.payment_method,
+    payment_status:   "pending",
+    gateway_name:     input.payment_method === "online_card" ? "paypal" : null,
+  }).select().single();
+
+  if (insertRes.error) throw new Error("Failed to create order: " + insertRes.error.message);
+  const order = insertRes.data as { id: string };
+
+  // 7. Insert order_items with DB prices
+  const orderItems = cleanItems.map((it) => {
+    const p = priceById.get(it.product_id)!;
+    return {
+      order_id:   order.id,
+      product_id: it.product_id,
+      name:       p.name,
+      qty:        it.quantity,
+      unit_price: p.price,
+    };
+  });
+  const itemsRes = await supabase.from("order_items").insert(orderItems);
+  if (itemsRes.error) {
+    // Roll back the order if items failed
+    await supabase.from("orders").delete().eq("id", order.id);
+    throw new Error("Failed to create order items: " + itemsRes.error.message);
+  }
+
+  return { orderId: order.id, subtotal, deliveryFee, total, currencyCode };
 }
