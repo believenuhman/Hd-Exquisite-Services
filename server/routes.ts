@@ -65,13 +65,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         delivery_notes?: string | null;
         zone_id?: string | null;
         payment_method?: string;
+        fulfillment_method?: string;
+        pickup_location?: string | null;
       };
 
       const method = body.payment_method === "online_card" ? "online_card" : "cash_on_delivery";
+      const fulfillment = body.fulfillment_method === "pickup" ? "pickup" : "delivery";
 
-      if (!body.customer_name?.trim())    return res.status(400).json({ error: "Name is required." });
-      if (!body.customer_phone?.trim())   return res.status(400).json({ error: "Phone is required." });
-      if (!body.delivery_address?.trim()) return res.status(400).json({ error: "Delivery address is required." });
+      if (!body.customer_name?.trim())  return res.status(400).json({ error: "Name is required." });
+      if (!body.customer_phone?.trim()) return res.status(400).json({ error: "Phone is required." });
+      if (fulfillment === "delivery" && !body.delivery_address?.trim()) {
+        return res.status(400).json({ error: "Delivery address is required." });
+      }
       if (!Array.isArray(body.items) || body.items.length === 0) {
         return res.status(400).json({ error: "Cart is empty." });
       }
@@ -81,12 +86,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           product_id: String(it.product_id ?? ""),
           quantity:   Number(it.quantity ?? 0),
         })),
-        customer_name:    body.customer_name,
-        customer_phone:   body.customer_phone,
-        delivery_address: body.delivery_address,
-        delivery_notes:   body.delivery_notes ?? null,
-        zone_id:          body.zone_id ?? null,
-        payment_method:   method,
+        customer_name:      body.customer_name,
+        customer_phone:     body.customer_phone,
+        delivery_address:   body.delivery_address ?? "",
+        delivery_notes:     body.delivery_notes ?? null,
+        zone_id:            body.zone_id ?? null,
+        payment_method:     method,
+        fulfillment_method: fulfillment,
+        pickup_location:    body.pickup_location ?? null,
       });
 
       return res.json(result);
@@ -327,7 +334,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const [orderRes, itemsRes] = await Promise.all([
         supabase
           .from("orders")
-          .select("id,status,customer_name,customer_phone,delivery_address,subtotal,delivery_fee,total,currency_symbol,currency_code,refusal_reason,created_at,payment_method,payment_status,paid_at")
+          .select("id,status,customer_name,customer_phone,delivery_address,delivery_notes,fulfillment_method,pickup_location,subtotal,delivery_fee,total,currency_symbol,currency_code,refusal_reason,created_at,payment_method,payment_status,paid_at")
           .eq("id", id)
           .maybeSingle(),
         supabase

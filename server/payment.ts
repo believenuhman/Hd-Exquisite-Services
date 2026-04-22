@@ -304,13 +304,15 @@ export async function bindPayPalOrderId(orderId: string, paypalOrderId: string):
 export type OrderItemInput = { product_id: string; quantity: number };
 
 export type CreateOrderInput = {
-  items:            OrderItemInput[];
-  customer_name:    string;
-  customer_phone:   string;
-  delivery_address: string;
-  delivery_notes:   string | null;
-  zone_id:          string | null;
-  payment_method:   "cash_on_delivery" | "online_card";
+  items:               OrderItemInput[];
+  customer_name:       string;
+  customer_phone:      string;
+  delivery_address:    string;
+  delivery_notes:      string | null;
+  zone_id:             string | null;
+  payment_method:      "cash_on_delivery" | "online_card";
+  fulfillment_method?: "delivery" | "pickup";
+  pickup_location?:    string | null;
 };
 
 export type CreateOrderResult = {
@@ -370,24 +372,27 @@ export async function createServerOrder(input: CreateOrderInput): Promise<Create
   }
   subtotal = Math.round(subtotal * 100) / 100;
 
-  // 4. Calculate delivery fee from DB
+  // 4. Calculate delivery fee from DB (zero for pickup orders)
+  const fulfillmentMethod = input.fulfillment_method === "pickup" ? "pickup" : "delivery";
   let deliveryFee = 0;
-  if (input.zone_id) {
-    const { data: zone, error: zoneErr } = await supabase
-      .from("delivery_zones")
-      .select("fee,is_active")
-      .eq("id", input.zone_id)
-      .maybeSingle();
-    if (zoneErr) throw new Error("Failed to load delivery zone: " + zoneErr.message);
-    if (!zone || zone.is_active === false) throw new Error("Selected delivery zone is not available.");
-    deliveryFee = Number(zone.fee ?? 0);
-  } else {
-    const { data: settings } = await supabase
-      .from("settings")
-      .select("flat_fee")
-      .limit(1)
-      .maybeSingle();
-    deliveryFee = Number((settings as { flat_fee?: number } | null)?.flat_fee ?? 0);
+  if (fulfillmentMethod === "delivery") {
+    if (input.zone_id) {
+      const { data: zone, error: zoneErr } = await supabase
+        .from("delivery_zones")
+        .select("fee,is_active")
+        .eq("id", input.zone_id)
+        .maybeSingle();
+      if (zoneErr) throw new Error("Failed to load delivery zone: " + zoneErr.message);
+      if (!zone || zone.is_active === false) throw new Error("Selected delivery zone is not available.");
+      deliveryFee = Number(zone.fee ?? 0);
+    } else {
+      const { data: settings } = await supabase
+        .from("settings")
+        .select("flat_fee")
+        .limit(1)
+        .maybeSingle();
+      deliveryFee = Number((settings as { flat_fee?: number } | null)?.flat_fee ?? 0);
+    }
   }
   deliveryFee = Math.round(deliveryFee * 100) / 100;
 
@@ -403,22 +408,25 @@ export async function createServerOrder(input: CreateOrderInput): Promise<Create
   const total = Math.round((subtotal + deliveryFee) * 100) / 100;
 
   // 6. Insert order
+  const trimmedAddress = String(input.delivery_address ?? "").trim();
   const insertRes = await supabase.from("orders").insert({
-    customer_name:    String(input.customer_name ?? "").trim(),
-    customer_phone:   String(input.customer_phone ?? "").trim(),
-    delivery_address: String(input.delivery_address ?? "").trim(),
-    delivery_notes:   input.delivery_notes ? String(input.delivery_notes).trim() : null,
-    age_confirmed:    true,
-    status:           "received",
+    customer_name:      String(input.customer_name ?? "").trim(),
+    customer_phone:     String(input.customer_phone ?? "").trim(),
+    delivery_address:   fulfillmentMethod === "pickup" ? null : trimmedAddress,
+    delivery_notes:     input.delivery_notes ? String(input.delivery_notes).trim() : null,
+    age_confirmed:      true,
+    status:             "received",
     subtotal,
-    delivery_fee:     deliveryFee,
+    delivery_fee:       deliveryFee,
     total,
-    currency_code:    currencyCode,
-    currency_symbol:  currencySymbol,
-    zone_id:          input.zone_id ?? null,
-    payment_method:   input.payment_method,
-    payment_status:   "pending",
-    gateway_name:     input.payment_method === "online_card" ? "paypal" : null,
+    currency_code:      currencyCode,
+    currency_symbol:    currencySymbol,
+    zone_id:            fulfillmentMethod === "pickup" ? null : (input.zone_id ?? null),
+    payment_method:     input.payment_method,
+    payment_status:     "pending",
+    gateway_name:       input.payment_method === "online_card" ? "paypal" : null,
+    fulfillment_method: fulfillmentMethod,
+    pickup_location:    fulfillmentMethod === "pickup" ? (input.pickup_location ?? null) : null,
   }).select().single();
 
   if (insertRes.error) throw new Error("Failed to create order: " + insertRes.error.message);

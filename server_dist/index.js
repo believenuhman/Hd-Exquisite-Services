@@ -218,25 +218,29 @@ async function createServerOrder(input) {
     subtotal += p.price * it.quantity;
   }
   subtotal = Math.round(subtotal * 100) / 100;
+  const fulfillmentMethod = input.fulfillment_method === "pickup" ? "pickup" : "delivery";
   let deliveryFee = 0;
-  if (input.zone_id) {
-    const { data: zone, error: zoneErr } = await supabase.from("delivery_zones").select("fee,is_active").eq("id", input.zone_id).maybeSingle();
-    if (zoneErr) throw new Error("Failed to load delivery zone: " + zoneErr.message);
-    if (!zone || zone.is_active === false) throw new Error("Selected delivery zone is not available.");
-    deliveryFee = Number(zone.fee ?? 0);
-  } else {
-    const { data: settings } = await supabase.from("settings").select("flat_fee").limit(1).maybeSingle();
-    deliveryFee = Number(settings?.flat_fee ?? 0);
+  if (fulfillmentMethod === "delivery") {
+    if (input.zone_id) {
+      const { data: zone, error: zoneErr } = await supabase.from("delivery_zones").select("fee,is_active").eq("id", input.zone_id).maybeSingle();
+      if (zoneErr) throw new Error("Failed to load delivery zone: " + zoneErr.message);
+      if (!zone || zone.is_active === false) throw new Error("Selected delivery zone is not available.");
+      deliveryFee = Number(zone.fee ?? 0);
+    } else {
+      const { data: settings } = await supabase.from("settings").select("flat_fee").limit(1).maybeSingle();
+      deliveryFee = Number(settings?.flat_fee ?? 0);
+    }
   }
   deliveryFee = Math.round(deliveryFee * 100) / 100;
   const { data: settingsRow } = await supabase.from("settings").select("currency_code,currency_symbol").limit(1).maybeSingle();
   const currencyCode = settingsRow?.currency_code ?? "USD";
   const currencySymbol = settingsRow?.currency_symbol ?? "$";
   const total = Math.round((subtotal + deliveryFee) * 100) / 100;
+  const trimmedAddress = String(input.delivery_address ?? "").trim();
   const insertRes = await supabase.from("orders").insert({
     customer_name: String(input.customer_name ?? "").trim(),
     customer_phone: String(input.customer_phone ?? "").trim(),
-    delivery_address: String(input.delivery_address ?? "").trim(),
+    delivery_address: fulfillmentMethod === "pickup" ? null : trimmedAddress,
     delivery_notes: input.delivery_notes ? String(input.delivery_notes).trim() : null,
     age_confirmed: true,
     status: "received",
@@ -245,10 +249,12 @@ async function createServerOrder(input) {
     total,
     currency_code: currencyCode,
     currency_symbol: currencySymbol,
-    zone_id: input.zone_id ?? null,
+    zone_id: fulfillmentMethod === "pickup" ? null : input.zone_id ?? null,
     payment_method: input.payment_method,
     payment_status: "pending",
-    gateway_name: input.payment_method === "online_card" ? "paypal" : null
+    gateway_name: input.payment_method === "online_card" ? "paypal" : null,
+    fulfillment_method: fulfillmentMethod,
+    pickup_location: fulfillmentMethod === "pickup" ? input.pickup_location ?? null : null
   }).select().single();
   if (insertRes.error) throw new Error("Failed to create order: " + insertRes.error.message);
   const order = insertRes.data;
@@ -303,9 +309,12 @@ async function registerRoutes(app2) {
     try {
       const body = req.body;
       const method = body.payment_method === "online_card" ? "online_card" : "cash_on_delivery";
+      const fulfillment = body.fulfillment_method === "pickup" ? "pickup" : "delivery";
       if (!body.customer_name?.trim()) return res.status(400).json({ error: "Name is required." });
       if (!body.customer_phone?.trim()) return res.status(400).json({ error: "Phone is required." });
-      if (!body.delivery_address?.trim()) return res.status(400).json({ error: "Delivery address is required." });
+      if (fulfillment === "delivery" && !body.delivery_address?.trim()) {
+        return res.status(400).json({ error: "Delivery address is required." });
+      }
       if (!Array.isArray(body.items) || body.items.length === 0) {
         return res.status(400).json({ error: "Cart is empty." });
       }
@@ -316,10 +325,12 @@ async function registerRoutes(app2) {
         })),
         customer_name: body.customer_name,
         customer_phone: body.customer_phone,
-        delivery_address: body.delivery_address,
+        delivery_address: body.delivery_address ?? "",
         delivery_notes: body.delivery_notes ?? null,
         zone_id: body.zone_id ?? null,
-        payment_method: method
+        payment_method: method,
+        fulfillment_method: fulfillment,
+        pickup_location: body.pickup_location ?? null
       });
       return res.json(result);
     } catch (err) {
@@ -487,7 +498,7 @@ async function registerRoutes(app2) {
       }
       const supabase = getSupabaseAdmin();
       const [orderRes, itemsRes] = await Promise.all([
-        supabase.from("orders").select("id,status,customer_name,customer_phone,delivery_address,subtotal,delivery_fee,total,currency_symbol,currency_code,refusal_reason,created_at,payment_method,payment_status,paid_at").eq("id", id).maybeSingle(),
+        supabase.from("orders").select("id,status,customer_name,customer_phone,delivery_address,delivery_notes,fulfillment_method,pickup_location,subtotal,delivery_fee,total,currency_symbol,currency_code,refusal_reason,created_at,payment_method,payment_status,paid_at").eq("id", id).maybeSingle(),
         supabase.from("order_items").select("id,order_id,product_id,name,qty,unit_price").eq("order_id", id)
       ]);
       if (orderRes.error) {

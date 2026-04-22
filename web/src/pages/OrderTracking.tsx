@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   IoChevronBack, IoHome, IoCheckmarkCircle, IoAlertCircle,
-  IoCard, IoCash, IoRefresh, IoTime,
+  IoCard, IoCash, IoRefresh, IoTime, IoBicycle, IoStorefront,
 } from "react-icons/io5";
 
 type OrderStatus = "received" | "packing" | "out_for_delivery" | "delivered" | "refused";
@@ -13,7 +13,10 @@ type Order = {
   status: OrderStatus;
   customer_name: string;
   customer_phone: string;
-  delivery_address: string;
+  delivery_address: string | null;
+  delivery_notes: string | null;
+  fulfillment_method: "delivery" | "pickup" | null;
+  pickup_location: string | null;
   subtotal: number;
   delivery_fee: number;
   total: number;
@@ -257,8 +260,14 @@ export function OrderTracking() {
             <span className="font-inter text-sm text-white">{order.currency_symbol}{(order.subtotal ?? 0).toFixed(2)}</span>
           </div>
           <div className="flex justify-between py-1">
-            <span className="font-inter text-sm" style={{ color: "rgba(255,255,255,0.55)" }}>Delivery</span>
-            <span className="font-inter text-sm text-white">{order.currency_symbol}{(order.delivery_fee ?? 0).toFixed(2)}</span>
+            <span className="font-inter text-sm" style={{ color: "rgba(255,255,255,0.55)" }}>
+              {order.fulfillment_method === "pickup" ? "Pickup" : "Delivery"}
+            </span>
+            <span className="font-inter text-sm text-white">
+              {order.fulfillment_method === "pickup"
+                ? "FREE"
+                : `${order.currency_symbol}${(order.delivery_fee ?? 0).toFixed(2)}`}
+            </span>
           </div>
           <div className="flex justify-between pt-2 mt-1" style={{ borderTop: "1px solid rgba(228,161,43,0.1)" }}>
             <span className="font-inter font-bold text-white">Total</span>
@@ -266,14 +275,28 @@ export function OrderTracking() {
           </div>
         </div>
 
-        {/* Delivery info */}
+        {/* Delivery / Pickup info */}
         <div className="rounded-2xl p-4" style={{ background: "linear-gradient(145deg, #1C1828, #121212)", border: "1px solid rgba(228,161,43,0.1)" }}>
-          <p className="font-inter font-semibold text-xs uppercase tracking-widest mb-3" style={{ color: "#E4A12B" }}>Delivery Info</p>
-          {[
-            { label: "Name",    value: order.customer_name },
-            { label: "Phone",   value: order.customer_phone },
-            { label: "Address", value: order.delivery_address },
-          ].map(({ label, value }) => (
+          <div className="flex items-center justify-between mb-3">
+            <p className="font-inter font-semibold text-xs uppercase tracking-widest" style={{ color: "#E4A12B" }}>
+              {order.fulfillment_method === "pickup" ? "Pickup Info" : "Delivery Info"}
+            </p>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: "rgba(228,161,43,0.1)", border: "1px solid rgba(228,161,43,0.25)" }}>
+              {order.fulfillment_method === "pickup"
+                ? <IoStorefront size={11} color="#E4A12B" />
+                : <IoBicycle    size={11} color="#E4A12B" />}
+              <span className="font-inter text-xs font-semibold" style={{ color: "#E4A12B" }}>
+                {order.fulfillment_method === "pickup" ? "Pick Up" : "Delivery"}
+              </span>
+            </div>
+          </div>
+          {([
+            { label: "Name",    value: order.customer_name,    show: true },
+            { label: "Phone",   value: order.customer_phone,   show: true },
+            { label: "Address", value: order.delivery_address ?? "", show: order.fulfillment_method !== "pickup" && !!order.delivery_address },
+            { label: "Pickup",  value: order.pickup_location ?? "Barbershop, James Fort Building, Bridgetown", show: order.fulfillment_method === "pickup" },
+            { label: "Notes",   value: order.delivery_notes ?? "", show: !!order.delivery_notes },
+          ]).filter((r) => r.show).map(({ label, value }) => (
             <div key={label} className="flex justify-between py-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
               <span className="font-inter text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>{label}</span>
               <span className="font-inter text-xs text-right text-white flex-1 ml-4">{value}</span>

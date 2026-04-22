@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { IoChevronBack, IoCheckmarkCircle, IoAlertCircle, IoCard, IoCash } from "react-icons/io5";
+import { IoChevronBack, IoCheckmarkCircle, IoAlertCircle, IoCard, IoCash, IoBicycle, IoStorefront, IoLocationSharp } from "react-icons/io5";
 import { supabase, DeliveryZone } from "@/lib/supabase";
 import { useCart } from "@/context/CartContext";
 import { useAppSettings } from "@/context/AppSettingsContext";
@@ -9,7 +9,11 @@ import { storage } from "@/lib/storage";
 
 const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
 
+// Pickup location — change here to update everywhere.
+const PICKUP_LOCATION = "Barbershop, James Fort Building, Bridgetown";
+
 type PaymentMethod = "cash_on_delivery" | "online_card";
+type FulfillmentMethod = "delivery" | "pickup";
 
 export function Checkout() {
   const navigate  = useNavigate();
@@ -27,6 +31,9 @@ export function Checkout() {
   const [ageConfirm, setAgeConfirm]   = useState(false);
   const [idConfirm, setIdConfirm]     = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash_on_delivery");
+  const [fulfillment, setFulfillment] = useState<FulfillmentMethod>(
+    () => (storage.get("hd_saved_fulfillment") as FulfillmentMethod) ?? "delivery"
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
   const submittingRef = useRef(false);
@@ -40,7 +47,9 @@ export function Checkout() {
       .catch(() => {});
   }, []);
 
-  const deliveryFee  = selectedZone?.fee ?? (settings?.flat_fee ?? 0);
+  const deliveryFee  = fulfillment === "pickup"
+    ? 0
+    : (selectedZone?.fee ?? (settings?.flat_fee ?? 0));
   const total        = subtotal + deliveryFee;
   const sym          = settings?.currency_symbol ?? "$";
   const currencyCode = settings?.currency_code ?? "USD";
@@ -48,7 +57,7 @@ export function Checkout() {
   const validate = (): string | null => {
     if (!name.trim())    return "Please enter your name.";
     if (!phone.trim())   return "Please enter your phone number.";
-    if (!address.trim()) return "Please enter your delivery address.";
+    if (fulfillment === "delivery" && !address.trim()) return "Please enter your delivery address.";
     if (!ageConfirm)     return "You must confirm you are 18+ years old.";
     if (!idConfirm)      return "You must confirm you have valid ID.";
     if (items.length === 0) return "Your cart is empty.";
@@ -64,12 +73,14 @@ export function Checkout() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         items: items.map((it) => ({ product_id: it.product.id, quantity: it.quantity })),
-        customer_name:    name.trim(),
-        customer_phone:   phone.trim(),
-        delivery_address: address.trim(),
-        delivery_notes:   notes.trim() || null,
-        zone_id:          selectedZone?.id ?? null,
-        payment_method:   method,
+        customer_name:      name.trim(),
+        customer_phone:     phone.trim(),
+        delivery_address:   fulfillment === "delivery" ? address.trim() : "",
+        delivery_notes:     notes.trim() || null,
+        zone_id:            fulfillment === "delivery" ? (selectedZone?.id ?? null) : null,
+        payment_method:     method,
+        fulfillment_method: fulfillment,
+        pickup_location:    fulfillment === "pickup" ? PICKUP_LOCATION : null,
       }),
     });
     if (!apiRes.ok) {
@@ -87,9 +98,10 @@ export function Checkout() {
     submittingRef.current = true;
     setLoading(true);
 
-    storage.set("hd_saved_name",    name.trim());
-    storage.set("hd_saved_phone",   phone.trim());
-    storage.set("hd_saved_address", address.trim());
+    storage.set("hd_saved_name",        name.trim());
+    storage.set("hd_saved_phone",       phone.trim());
+    storage.set("hd_saved_address",     address.trim());
+    storage.set("hd_saved_fulfillment", fulfillment);
 
     try {
       const order = await createOrder(paymentMethod);
@@ -179,14 +191,56 @@ export function Checkout() {
           </div>
         )}
 
-        {/* Delivery details */}
+        {/* Fulfillment Method (Delivery / Pickup) */}
         <div className="rounded-2xl p-4" style={{ background: "linear-gradient(145deg, #1C1828, #121212)", border: "1px solid rgba(228,161,43,0.1)" }}>
-          <p className="font-inter font-semibold text-xs uppercase tracking-widest mb-4" style={{ color: "#E4A12B" }}>Delivery Details</p>
-          {[
-            { label: "Full Name",        value: name,    onChange: setName,    placeholder: "Your full name",       type: "text" },
-            { label: "Phone Number",     value: phone,   onChange: setPhone,   placeholder: "+1 555 000 0000",      type: "tel"  },
-            { label: "Delivery Address", value: address, onChange: setAddress, placeholder: "Street address, city", type: "text" },
-          ].map(({ label, value, onChange, placeholder, type }) => (
+          <p className="font-inter font-semibold text-xs uppercase tracking-widest mb-3" style={{ color: "#E4A12B" }}>How would you like it?</p>
+          <div className="grid grid-cols-2 gap-3">
+            {([
+              { key: "delivery" as const, label: "Delivery", sub: "Bring it to me",   Icon: IoBicycle    },
+              { key: "pickup"   as const, label: "Pick Up",  sub: "I'll come get it", Icon: IoStorefront },
+            ]).map(({ key, label, sub, Icon }) => {
+              const active = fulfillment === key;
+              return (
+                <button key={key} onClick={() => setFulfillment(key)}
+                  className="flex flex-col items-center gap-1.5 rounded-xl py-3 px-2 press-active"
+                  style={{
+                    background: active ? "rgba(228,161,43,0.1)" : "rgba(255,255,255,0.03)",
+                    border: `1.5px solid ${active ? "rgba(228,161,43,0.5)" : "rgba(255,255,255,0.08)"}`,
+                    transition: "all 0.2s",
+                  }}>
+                  <Icon size={22} color={active ? "#E4A12B" : "rgba(255,255,255,0.4)"} />
+                  <span className="font-inter text-sm font-semibold" style={{ color: active ? "#fff" : "rgba(255,255,255,0.6)" }}>{label}</span>
+                  <span className="font-inter text-[10px]" style={{ color: "rgba(255,255,255,0.35)" }}>{sub}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Pickup location card */}
+          {fulfillment === "pickup" && (
+            <div className="mt-3 flex items-start gap-2 p-3 rounded-xl" style={{ background: "rgba(228,161,43,0.06)", border: "1px solid rgba(228,161,43,0.2)" }}>
+              <IoLocationSharp size={16} color="#E4A12B" style={{ marginTop: 2, flexShrink: 0 }} />
+              <div>
+                <p className="font-inter text-xs font-semibold" style={{ color: "#E4A12B" }}>Pickup Location</p>
+                <p className="font-inter text-sm text-white mt-0.5">{PICKUP_LOCATION}</p>
+                <p className="font-inter text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>
+                  We'll text you on the number below when your order is ready.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Customer / Delivery details */}
+        <div className="rounded-2xl p-4" style={{ background: "linear-gradient(145deg, #1C1828, #121212)", border: "1px solid rgba(228,161,43,0.1)" }}>
+          <p className="font-inter font-semibold text-xs uppercase tracking-widest mb-4" style={{ color: "#E4A12B" }}>
+            {fulfillment === "pickup" ? "Your Details" : "Delivery Details"}
+          </p>
+          {([
+            { label: "Full Name",        value: name,    onChange: setName,    placeholder: "Your full name",       type: "text", show: true },
+            { label: "Phone Number",     value: phone,   onChange: setPhone,   placeholder: "+1 555 000 0000",      type: "tel",  show: true },
+            { label: "Delivery Address", value: address, onChange: setAddress, placeholder: "Street address, city", type: "text", show: fulfillment === "delivery" },
+          ]).filter((f) => f.show).map(({ label, value, onChange, placeholder, type }) => (
             <div key={label} className="mb-4">
               <label className="font-inter text-xs mb-1.5 block" style={{ color: "rgba(255,255,255,0.5)" }}>{label}</label>
               <input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
@@ -195,15 +249,18 @@ export function Checkout() {
             </div>
           ))}
           <div>
-            <label className="font-inter text-xs mb-1.5 block" style={{ color: "rgba(255,255,255,0.5)" }}>Delivery Notes (optional)</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Special instructions..."
+            <label className="font-inter text-xs mb-1.5 block" style={{ color: "rgba(255,255,255,0.5)" }}>
+              {fulfillment === "pickup" ? "Notes for us (optional)" : "Delivery Notes (optional)"}
+            </label>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)}
+              placeholder={fulfillment === "pickup" ? "Anything we should know..." : "Special instructions..."}
               className="w-full rounded-xl px-4 py-3 font-inter text-sm text-white resize-none"
               style={{ background: "rgba(20,20,28,0.7)", border: "1px solid rgba(228,161,43,0.15)", height: 80 }} />
           </div>
         </div>
 
-        {/* Delivery Zone */}
-        {zones.length > 0 && (
+        {/* Delivery Zone — hidden for pickup */}
+        {fulfillment === "delivery" && zones.length > 0 && (
           <div className="rounded-2xl p-4" style={{ background: "linear-gradient(145deg, #1C1828, #121212)", border: "1px solid rgba(228,161,43,0.1)" }}>
             <p className="font-inter font-semibold text-xs uppercase tracking-widest mb-3" style={{ color: "#E4A12B" }}>Delivery Zone</p>
             <div className="flex flex-col gap-2">
@@ -234,8 +291,16 @@ export function Checkout() {
             <span className="font-inter text-sm text-white">{sym}{subtotal.toFixed(2)}</span>
           </div>
           <div className="flex justify-between mb-2">
-            <span className="font-inter text-sm" style={{ color: "rgba(255,255,255,0.55)" }}>Delivery</span>
-            <span className="font-inter text-sm text-white">{selectedZone ? `${sym}${deliveryFee.toFixed(2)}` : "Select zone"}</span>
+            <span className="font-inter text-sm" style={{ color: "rgba(255,255,255,0.55)" }}>
+              {fulfillment === "pickup" ? "Pickup" : "Delivery"}
+            </span>
+            <span className="font-inter text-sm text-white">
+              {fulfillment === "pickup"
+                ? "FREE"
+                : (selectedZone || (settings?.flat_fee ?? 0) > 0)
+                  ? `${sym}${deliveryFee.toFixed(2)}`
+                  : "Select zone"}
+            </span>
           </div>
           <div className="flex justify-between mt-3 pt-3" style={{ borderTop: "1px solid rgba(228,161,43,0.1)" }}>
             <span className="font-inter font-bold text-white">Total</span>
