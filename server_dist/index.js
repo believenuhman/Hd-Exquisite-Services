@@ -1,13 +1,32 @@
-// server/index.ts
-import express from "express";
-
-// server/routes.ts
-import { createServer } from "node:http";
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
 
 // server/payment.ts
+var payment_exports = {};
+__export(payment_exports, {
+  bindPayPalOrderId: () => bindPayPalOrderId,
+  capturePayPalOrder: () => capturePayPalOrder,
+  createPayPalOrder: () => createPayPalOrder,
+  createServerOrder: () => createServerOrder,
+  fulfillmentColumnsExist: () => fulfillmentColumnsExist,
+  getOrderById: () => getOrderById,
+  getOrderByPayPalId: () => getOrderByPayPalId,
+  getPayPalAccessToken: () => getPayPalAccessToken,
+  getPayPalBase: () => getPayPalBase,
+  getSupabaseAdmin: () => getSupabaseAdmin,
+  isPayPalConfigured: () => isPayPalConfigured,
+  updateOrderCancelled: () => updateOrderCancelled,
+  updateOrderFailed: () => updateOrderFailed,
+  updateOrderPaid: () => updateOrderPaid
+});
 import { createClient } from "@supabase/supabase-js";
-var SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
-var SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 function getSupabaseAdmin() {
   if (!SUPABASE_URL)
     throw new Error("Supabase URL not configured. Set SUPABASE_URL (or VITE_SUPABASE_URL).");
@@ -15,9 +34,6 @@ function getSupabaseAdmin() {
     throw new Error("Supabase service role key not configured. Set SUPABASE_SERVICE_ROLE_KEY in Replit Secrets.");
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 }
-var PAYPAL_CLIENT_ID = (process.env.PAYPAL_CLIENT_ID ?? "").trim();
-var PAYPAL_CLIENT_SECRET = (process.env.PAYPAL_CLIENT_SECRET ?? "").trim();
-var PAYPAL_ENV = (process.env.PAYPAL_ENV ?? "sandbox").toLowerCase().trim();
 function getPayPalBase() {
   return PAYPAL_ENV === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";
 }
@@ -182,8 +198,23 @@ async function bindPayPalOrderId(orderId, paypalOrderId) {
     console.log(`[paypal] bindPayPalOrderId idempotent: orderId=${orderId} paypalOrderId=${paypalOrderId}`);
   }
 }
+async function fulfillmentColumnsExist() {
+  if (fulfillmentColumnsExistCache !== null) return fulfillmentColumnsExistCache;
+  try {
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase.from("orders").select("fulfillment_method").limit(1);
+    fulfillmentColumnsExistCache = !error;
+    if (error) {
+      console.warn("[payment] fulfillment columns NOT present \u2014 pickup mode disabled until supabase-fulfillment-migration.sql is run.");
+    }
+  } catch {
+    fulfillmentColumnsExistCache = false;
+  }
+  return fulfillmentColumnsExistCache;
+}
 async function createServerOrder(input) {
   const supabase = getSupabaseAdmin();
+  const hasFulfillmentCols = await fulfillmentColumnsExist();
   if (!Array.isArray(input.items) || input.items.length === 0) {
     throw new Error("Order must contain at least one item.");
   }
@@ -219,6 +250,9 @@ async function createServerOrder(input) {
   }
   subtotal = Math.round(subtotal * 100) / 100;
   const fulfillmentMethod = input.fulfillment_method === "pickup" ? "pickup" : "delivery";
+  if (fulfillmentMethod === "pickup" && !hasFulfillmentCols) {
+    throw new Error("Pickup is not available yet. Please run supabase-fulfillment-migration.sql in Supabase SQL Editor to enable it.");
+  }
   let deliveryFee = 0;
   if (fulfillmentMethod === "delivery") {
     if (input.zone_id) {
@@ -237,7 +271,7 @@ async function createServerOrder(input) {
   const currencySymbol = settingsRow?.currency_symbol ?? "$";
   const total = Math.round((subtotal + deliveryFee) * 100) / 100;
   const trimmedAddress = String(input.delivery_address ?? "").trim();
-  const insertRes = await supabase.from("orders").insert({
+  const orderRow = {
     customer_name: String(input.customer_name ?? "").trim(),
     customer_phone: String(input.customer_phone ?? "").trim(),
     delivery_address: fulfillmentMethod === "pickup" ? null : trimmedAddress,
@@ -252,10 +286,13 @@ async function createServerOrder(input) {
     zone_id: fulfillmentMethod === "pickup" ? null : input.zone_id ?? null,
     payment_method: input.payment_method,
     payment_status: "pending",
-    gateway_name: input.payment_method === "online_card" ? "paypal" : null,
-    fulfillment_method: fulfillmentMethod,
-    pickup_location: fulfillmentMethod === "pickup" ? input.pickup_location ?? null : null
-  }).select().single();
+    gateway_name: input.payment_method === "online_card" ? "paypal" : null
+  };
+  if (hasFulfillmentCols) {
+    orderRow.fulfillment_method = fulfillmentMethod;
+    orderRow.pickup_location = fulfillmentMethod === "pickup" ? input.pickup_location ?? null : null;
+  }
+  const insertRes = await supabase.from("orders").insert(orderRow).select().single();
   if (insertRes.error) throw new Error("Failed to create order: " + insertRes.error.message);
   const order = insertRes.data;
   const orderItems = cleanItems.map((it) => {
@@ -275,8 +312,25 @@ async function createServerOrder(input) {
   }
   return { orderId: order.id, subtotal, deliveryFee, total, currencyCode };
 }
+var SUPABASE_URL, SUPABASE_SERVICE_KEY, PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, PAYPAL_ENV, fulfillmentColumnsExistCache;
+var init_payment = __esm({
+  "server/payment.ts"() {
+    "use strict";
+    SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
+    SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+    PAYPAL_CLIENT_ID = (process.env.PAYPAL_CLIENT_ID ?? "").trim();
+    PAYPAL_CLIENT_SECRET = (process.env.PAYPAL_CLIENT_SECRET ?? "").trim();
+    PAYPAL_ENV = (process.env.PAYPAL_ENV ?? "sandbox").toLowerCase().trim();
+    fulfillmentColumnsExistCache = null;
+  }
+});
+
+// server/index.ts
+import express from "express";
 
 // server/routes.ts
+init_payment();
+import { createServer } from "node:http";
 function amountsMatch(a, b) {
   return Math.round(Number(a) * 100) === Math.round(Number(b) * 100);
 }
@@ -497,8 +551,12 @@ async function registerRoutes(app2) {
         return res.status(429).json({ error: "Too many requests. Please wait a moment and try again." });
       }
       const supabase = getSupabaseAdmin();
+      const baseCols = "id,status,customer_name,customer_phone,delivery_address,delivery_notes,subtotal,delivery_fee,total,currency_symbol,currency_code,refusal_reason,created_at,payment_method,payment_status,paid_at";
+      const extendedCols = baseCols + ",fulfillment_method,pickup_location";
+      const { fulfillmentColumnsExist: fulfillmentColumnsExist2 } = await Promise.resolve().then(() => (init_payment(), payment_exports));
+      const cols = await fulfillmentColumnsExist2() ? extendedCols : baseCols;
       const [orderRes, itemsRes] = await Promise.all([
-        supabase.from("orders").select("id,status,customer_name,customer_phone,delivery_address,delivery_notes,fulfillment_method,pickup_location,subtotal,delivery_fee,total,currency_symbol,currency_code,refusal_reason,created_at,payment_method,payment_status,paid_at").eq("id", id).maybeSingle(),
+        supabase.from("orders").select(cols).eq("id", id).maybeSingle(),
         supabase.from("order_items").select("id,order_id,product_id,name,qty,unit_price").eq("order_id", id)
       ]);
       if (orderRes.error) {

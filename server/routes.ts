@@ -331,10 +331,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const supabase = getSupabaseAdmin();
 
       // Fetch only the fields the UI needs; verify phone ownership in one query.
+      const baseCols     = "id,status,customer_name,customer_phone,delivery_address,delivery_notes,subtotal,delivery_fee,total,currency_symbol,currency_code,refusal_reason,created_at,payment_method,payment_status,paid_at";
+      const extendedCols = baseCols + ",fulfillment_method,pickup_location";
+      const { fulfillmentColumnsExist } = await import("./payment.js");
+      const cols = (await fulfillmentColumnsExist()) ? extendedCols : baseCols;
       const [orderRes, itemsRes] = await Promise.all([
         supabase
           .from("orders")
-          .select("id,status,customer_name,customer_phone,delivery_address,delivery_notes,fulfillment_method,pickup_location,subtotal,delivery_fee,total,currency_symbol,currency_code,refusal_reason,created_at,payment_method,payment_status,paid_at")
+          .select(cols)
           .eq("id", id)
           .maybeSingle(),
         supabase

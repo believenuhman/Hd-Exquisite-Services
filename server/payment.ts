@@ -323,8 +323,28 @@ export type CreateOrderResult = {
   currencyCode:  string;
 };
 
+// Detect whether the fulfillment_method / pickup_location columns exist.
+// Cached so we only probe Supabase once. Lets the app run with or without
+// the supabase-fulfillment-migration.sql migration applied.
+let fulfillmentColumnsExistCache: boolean | null = null;
+export async function fulfillmentColumnsExist(): Promise<boolean> {
+  if (fulfillmentColumnsExistCache !== null) return fulfillmentColumnsExistCache;
+  try {
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase.from("orders").select("fulfillment_method").limit(1);
+    fulfillmentColumnsExistCache = !error;
+    if (error) {
+      console.warn("[payment] fulfillment columns NOT present — pickup mode disabled until supabase-fulfillment-migration.sql is run.");
+    }
+  } catch {
+    fulfillmentColumnsExistCache = false;
+  }
+  return fulfillmentColumnsExistCache;
+}
+
 export async function createServerOrder(input: CreateOrderInput): Promise<CreateOrderResult> {
   const supabase = getSupabaseAdmin();
+  const hasFulfillmentCols = await fulfillmentColumnsExist();
 
   // 1. Validate items
   if (!Array.isArray(input.items) || input.items.length === 0) {
@@ -374,6 +394,9 @@ export async function createServerOrder(input: CreateOrderInput): Promise<Create
 
   // 4. Calculate delivery fee from DB (zero for pickup orders)
   const fulfillmentMethod = input.fulfillment_method === "pickup" ? "pickup" : "delivery";
+  if (fulfillmentMethod === "pickup" && !hasFulfillmentCols) {
+    throw new Error("Pickup is not available yet. Please run supabase-fulfillment-migration.sql in Supabase SQL Editor to enable it.");
+  }
   let deliveryFee = 0;
   if (fulfillmentMethod === "delivery") {
     if (input.zone_id) {
@@ -407,27 +430,30 @@ export async function createServerOrder(input: CreateOrderInput): Promise<Create
 
   const total = Math.round((subtotal + deliveryFee) * 100) / 100;
 
-  // 6. Insert order
+  // 6. Insert order (only include fulfillment columns if the migration was applied)
   const trimmedAddress = String(input.delivery_address ?? "").trim();
-  const insertRes = await supabase.from("orders").insert({
-    customer_name:      String(input.customer_name ?? "").trim(),
-    customer_phone:     String(input.customer_phone ?? "").trim(),
-    delivery_address:   fulfillmentMethod === "pickup" ? null : trimmedAddress,
-    delivery_notes:     input.delivery_notes ? String(input.delivery_notes).trim() : null,
-    age_confirmed:      true,
-    status:             "received",
+  const orderRow: Record<string, unknown> = {
+    customer_name:    String(input.customer_name ?? "").trim(),
+    customer_phone:   String(input.customer_phone ?? "").trim(),
+    delivery_address: fulfillmentMethod === "pickup" ? null : trimmedAddress,
+    delivery_notes:   input.delivery_notes ? String(input.delivery_notes).trim() : null,
+    age_confirmed:    true,
+    status:           "received",
     subtotal,
-    delivery_fee:       deliveryFee,
+    delivery_fee:     deliveryFee,
     total,
-    currency_code:      currencyCode,
-    currency_symbol:    currencySymbol,
-    zone_id:            fulfillmentMethod === "pickup" ? null : (input.zone_id ?? null),
-    payment_method:     input.payment_method,
-    payment_status:     "pending",
-    gateway_name:       input.payment_method === "online_card" ? "paypal" : null,
-    fulfillment_method: fulfillmentMethod,
-    pickup_location:    fulfillmentMethod === "pickup" ? (input.pickup_location ?? null) : null,
-  }).select().single();
+    currency_code:    currencyCode,
+    currency_symbol:  currencySymbol,
+    zone_id:          fulfillmentMethod === "pickup" ? null : (input.zone_id ?? null),
+    payment_method:   input.payment_method,
+    payment_status:   "pending",
+    gateway_name:     input.payment_method === "online_card" ? "paypal" : null,
+  };
+  if (hasFulfillmentCols) {
+    orderRow.fulfillment_method = fulfillmentMethod;
+    orderRow.pickup_location    = fulfillmentMethod === "pickup" ? (input.pickup_location ?? null) : null;
+  }
+  const insertRes = await supabase.from("orders").insert(orderRow).select().single();
 
   if (insertRes.error) throw new Error("Failed to create order: " + insertRes.error.message);
   const order = insertRes.data as { id: string };
