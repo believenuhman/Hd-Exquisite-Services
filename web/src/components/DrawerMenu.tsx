@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { IoHome, IoGrid, IoCart, IoReceipt, IoPerson, IoClose, IoLogOut, IoLogIn, IoSettings, IoHelpCircle, IoPhonePortrait } from "react-icons/io5";
+import { IoHome, IoGrid, IoCart, IoReceipt, IoPerson, IoClose, IoLogOut, IoLogIn, IoSettings, IoHelpCircle } from "react-icons/io5";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 
@@ -18,7 +18,6 @@ const NAV_ITEMS = [
 ];
 
 const BOTTOM_ITEMS = [
-  { path: "/demo", label: "App Preview", Icon: IoPhonePortrait },
   { path: "/settings", label: "Settings", Icon: IoSettings },
   { path: "/contact-support", label: "Contact Support", Icon: IoHelpCircle },
 ];
