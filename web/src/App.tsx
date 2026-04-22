@@ -22,6 +22,7 @@ import { ProductDetail } from "@/pages/ProductDetail";
 import { OrderTracking } from "@/pages/OrderTracking";
 import { Settings } from "@/pages/Settings";
 import { ContactSupport } from "@/pages/ContactSupport";
+import { Demo } from "@/pages/Demo";
 import { PaymentSuccess } from "@/pages/PaymentSuccess";
 import { PaymentFailed } from "@/pages/PaymentFailed";
 import { PaymentCancelled } from "@/pages/PaymentCancelled";
@@ -34,7 +35,7 @@ function QueryRedirect({ to }: { to: string }) {
 }
 
 const TAB_PATHS = ["/", "/search", "/cart", "/profile", "/orders"];
-const NO_NAV_PREFIXES = ["/checkout", "/product/", "/order-tracking/", "/auth/", "/payment", "/settings", "/contact-support"];
+const NO_NAV_PREFIXES = ["/checkout", "/product/", "/order-tracking/", "/auth/", "/payment", "/settings", "/contact-support", "/demo"];
 
 function AppInner() {
   const { verified } = useAgeGate();
@@ -44,8 +45,10 @@ function AppInner() {
   const isNoNavRoute = NO_NAV_PREFIXES.some((p) => location.pathname.startsWith(p));
   const showBottomNav = !isNoNavRoute && (TAB_PATHS.includes(location.pathname) || location.pathname.startsWith("/orders"));
 
+  const isDemoRoute = location.pathname === "/demo";
+
   if (splash) return <SplashScreen onDone={() => setSplash(false)} />;
-  if (!verified) return <AgeGate />;
+  if (!verified && !isDemoRoute) return <AgeGate />;
   if (loading) return (
     <div className="fixed inset-0 flex items-center justify-center" style={{ background: "#09090C" }}>
       <div style={{ width: 32, height: 32, border: "2px solid rgba(228,161,43,0.2)", borderTopColor: "#E4A12B", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
@@ -62,7 +65,7 @@ function AppInner() {
     return <Navigate to="/auth/reset-password" replace />;
   }
 
-  if (!user && !isGuest && !isPaymentResultRoute &&
+  if (!user && !isGuest && !isPaymentResultRoute && !isDemoRoute &&
       location.pathname !== "/auth/welcome" &&
       !location.pathname.startsWith("/auth")) {
     return <Navigate to="/auth/welcome" replace />;
@@ -86,6 +89,7 @@ function AppInner() {
         <Route path="/order-tracking/:id" element={<OrderTracking />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/contact-support" element={<ContactSupport />} />
+        <Route path="/demo" element={<Demo />} />
 
         {/* Payment result screens — PayPal redirects here after approval/cancel */}
         <Route path="/payment-success" element={<PaymentSuccess />} />

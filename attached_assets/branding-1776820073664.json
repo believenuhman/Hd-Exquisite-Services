@@ -1,0 +1,135 @@
+{
+  "colorScheme": "dark",
+  "fonts": [
+    {
+      "family": "Inter",
+      "role": "body"
+    },
+    {
+      "family": "Playfair Display",
+      "role": "heading"
+    },
+    {
+      "family": "Cormorant Garamond",
+      "role": "display"
+    }
+  ],
+  "colors": {
+    "primary": "#E4A12B",
+    "secondary": "#352712",
+    "accent": "#E4A12B",
+    "background": "#09090C",
+    "textPrimary": "#09090C",
+    "link": "#9CA3AF"
+  },
+  "typography": {
+    "fontFamilies": {
+      "primary": "Inter",
+      "heading": "Playfair Display"
+    },
+    "fontStacks": {
+      "heading": [
+        "Playfair Display",
+        "serif"
+      ],
+      "body": [
+        "Inter",
+        "sans-serif"
+      ],
+      "paragraph": [
+        "Cormorant Garamond",
+        "serif"
+      ]
+    },
+    "fontSizes": {
+      "h1": "30px",
+      "h2": "30px",
+      "body": "14px"
+    }
+  },
+  "spacing": {
+    "baseUnit": 4,
+    "borderRadius": "16px"
+  },
+  "components": {
+    "buttonPrimary": {
+      "background": "#09090C",
+      "textColor": "#09090C",
+      "borderRadius": "16px",
+      "borderRadiusCorners": {
+        "topLeft": "16px",
+        "topRight": "16px",
+        "bottomRight": "16px",
+        "bottomLeft": "16px"
+      },
+      "shadow": "none"
+    },
+    "buttonSecondary": {
+      "background": "#18181B",
+      "textColor": "#787879",
+      "borderRadius": "16px",
+      "borderRadiusCorners": {
+        "topLeft": "16px",
+        "topRight": "16px",
+        "bottomRight": "16px",
+        "bottomLeft": "16px"
+      },
+      "shadow": "none"
+    }
+  },
+  "images": {
+    "logo": "https://xquisite-liquors.replit.app/logo.png",
+    "favicon": "https://xquisite-liquors.replit.app/logo-192.png",
+    "ogImage": null,
+    "logoAlt": "HD XQUISITE"
+  },
+  "__llm_logo_reasoning": {
+    "selectedIndex": 0,
+    "reasoning": "Selected #0 because it is visible, located in the header, and matches the brand name 'HD XQUISITE LIQUORS'. The source URL and alt text align with the brand identity.",
+    "confidence": 0.9,
+    "source": "llm"
+  },
+  "__llm_button_reasoning": {
+    "primary": {
+      "index": 0,
+      "text": "I AM 18 OR OLDER — ENTER",
+      "reasoning": "Button #0 is the primary CTA because it encourages users to enter the site, which is the main action for visitors. The text 'I AM 18 OR OLDER — ENTER' is action-oriented and crucial for accessing the content."
+    },
+    "secondary": {
+      "index": 1,
+      "text": "I am under 18 — Exit",
+      "reasoning": "Button #1 serves as a secondary action, allowing users to exit if they are underage. It has a different background color, fulfilling the requirement for a secondary button."
+    },
+    "confidence": 0.95
+  },
+  "personality": {
+    "tone": "bold",
+    "energy": "high",
+    "targetAudience": "Adults interested in premium liquors"
+  },
+  "designSystem": {
+    "framework": "tailwind",
+    "componentLibrary": ""
+  },
+  "confidence": {
+    "buttons": 0.95,
+    "colors": 0.9,
+    "overall": 0.925
+  },
+  "__llm_metadata": {
+    "logoSelection": {
+      "llmCalled": true,
+      "llmSucceeded": true,
+      "finalSource": "llm",
+      "rawLogoSelection": {
+        "selectedLogoIndex": 0,
+        "selectedLogoReasoning": "Selected #0 because it is visible, located in the header, and matches the brand name 'HD XQUISITE LIQUORS'. The source URL and alt text align with the brand identity.",
+        "confidence": 0.9
+      }
+    },
+    "buttonClassification": {
+      "llmCalled": true,
+      "llmSucceeded": true
+    }
+  }
+}
