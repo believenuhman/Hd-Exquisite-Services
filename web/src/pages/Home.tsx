@@ -5,14 +5,9 @@ import { supabase, Product } from "@/lib/supabase";
 import { useCart } from "@/context/CartContext";
 import { ProductCard } from "@/components/ProductCard";
 import { DrawerMenu } from "@/components/DrawerMenu";
+import { AdCarousel } from "@/components/AdCarousel";
 
 const CATEGORIES = ["All", "Whiskey", "Vodka", "Rum", "Wine", "Tequila", "Bourbon"];
-const HERO_BOTTLES = [
-  { src: "/hennessy.png", name: "Hennessy VS", sub: "Cognac" },
-  { src: "/vodka.png", name: "Premium Vodka", sub: "Spirits" },
-  { src: "/rum.png", name: "Dark Rum", sub: "Caribbean" },
-  { src: "/donjulio.png", name: "Don Julio", sub: "Tequila" },
-];
 
 export function Home() {
   const navigate = useNavigate();
@@ -21,7 +16,6 @@ export function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState("All");
-  const [heroIdx, setHeroIdx] = useState(0);
 
   const [fetchError, setFetchError] = useState(false);
 
@@ -33,11 +27,6 @@ export function Home() {
         setLoading(false);
       })
       .catch(() => { setFetchError(true); setLoading(false); });
-  }, []);
-
-  useEffect(() => {
-    const t = setInterval(() => setHeroIdx((i) => (i + 1) % HERO_BOTTLES.length), 3000);
-    return () => clearInterval(t);
   }, []);
 
   const featured = products.filter((p) => p.is_trending);
@@ -90,31 +79,8 @@ export function Home() {
           </button>
         </div>
 
-        {/* Animated Hero Banner */}
-        <div className="mx-4 mb-5 rounded-3xl overflow-hidden relative" style={{ height: 175, background: "linear-gradient(135deg, #1C1828, #0D0B14)" }}>
-          <div className="absolute inset-0 flex items-center justify-center">
-            {HERO_BOTTLES.map((bottle, i) => (
-              <div key={i} className="absolute inset-0 flex items-center justify-between px-6 transition-all duration-500"
-                style={{ opacity: i === heroIdx ? 1 : 0, transform: i === heroIdx ? "translateX(0)" : "translateX(20px)" }}>
-                <div className="flex-1">
-                  <p className="font-inter text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: "#E4A12B" }}>{bottle.sub}</p>
-                  <p className="font-playfair text-white font-bold text-2xl mb-3">{bottle.name}</p>
-                  <button onClick={() => navigate("/search")} className="flex items-center gap-2 press-active">
-                    <span className="font-inter text-sm font-semibold" style={{ color: "#C91E8C" }}>Shop Now</span>
-                    <IoChevronForward size={14} color="#C91E8C" />
-                  </button>
-                </div>
-                <img src={bottle.src} alt={bottle.name} style={{ width: 95, height: 145, objectFit: "contain", filter: "drop-shadow(0 4px 16px rgba(0,0,0,0.6))" }} />
-              </div>
-            ))}
-          </div>
-          {/* Dots */}
-          <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5">
-            {HERO_BOTTLES.map((_, i) => (
-              <div key={i} style={{ width: i === heroIdx ? 16 : 5, height: 5, borderRadius: 3, background: i === heroIdx ? "#E4A12B" : "rgba(255,255,255,0.25)", transition: "all 0.3s" }} />
-            ))}
-          </div>
-        </div>
+        {/* Ads / Hero carousel (mixed image + video) */}
+        <AdCarousel />
 
         {/* Category chips */}
         <div className="flex gap-2 px-4 mb-6 overflow-x-auto no-scrollbar">
