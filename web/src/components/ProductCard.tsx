@@ -12,6 +12,7 @@ const BOTTLE_IMAGES: Record<string, string> = {
   rum: "/rum.png",
   wine: "/wine.png",
   tequila: "/donjulio.png",
+  "cocktails & seltzers": "/vodka.png",
 };
 
 export function getProductImage(product: Product): string {

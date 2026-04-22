@@ -7,7 +7,7 @@ import { ProductCard } from "@/components/ProductCard";
 import { DrawerMenu } from "@/components/DrawerMenu";
 import { AdCarousel } from "@/components/AdCarousel";
 
-const CATEGORIES = ["All", "Whiskey", "Vodka", "Rum", "Wine", "Tequila", "Bourbon"];
+const CATEGORIES = ["All", "Whiskey", "Vodka", "Cocktails & Seltzers", "Rum", "Wine", "Tequila", "Bourbon"];
 
 export function Home() {
   const navigate = useNavigate();

@@ -3,7 +3,7 @@ import { IoSearch, IoClose } from "react-icons/io5";
 import { supabase, Product } from "@/lib/supabase";
 import { ProductCard } from "@/components/ProductCard";
 
-const CATEGORIES = ["All", "Whiskey", "Vodka", "Rum", "Wine", "Tequila", "Bourbon"];
+const CATEGORIES = ["All", "Whiskey", "Vodka", "Cocktails & Seltzers", "Rum", "Wine", "Tequila", "Bourbon"];
 const SORTS = ["Default", "Price ↑", "Price ↓", "Rating"];
 
 export function Search() {
