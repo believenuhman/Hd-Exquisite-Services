@@ -313,6 +313,7 @@ export type CreateOrderInput = {
   payment_method:      "cash_on_delivery" | "online_card";
   fulfillment_method?: "delivery" | "pickup";
   pickup_location?:    string | null;
+  pickup_location_id?: string | null;   // FK to pickup_locations.id (required for pickup once inventory migration is applied)
   user_id?:            string | null;   // signed-in user id (for membership lookup + redemption attribution)
   coupon_code?:        string | null;   // raw client input; resolved + validated server-side
 };
@@ -378,16 +379,31 @@ export async function createServerOrder(input: CreateOrderInput): Promise<Create
   for (const p of products as { id: string; name: string; price: number; stock_qty: number }[]) {
     priceById.set(p.id, { name: p.name, price: Number(p.price ?? 0), stock_qty: Number(p.stock_qty ?? 0) });
   }
-  for (const it of cleanItems) {
-    const p = priceById.get(it.product_id);
-    if (!p) {
-      throw new Error(`Product ${it.product_id} is not available.`);
+  // Stock check:
+  //   - PICKUP orders: per-location stock (product_stock table) — checked below
+  //     against the selected pickup_location_id. The global stock_qty is
+  //     ignored for pickup so a "0 globally" product can still be sold from a
+  //     stocked location.
+  //   - DELIVERY orders: keep checking the legacy global stock_qty.
+  const isPickupOrder = input.fulfillment_method === "pickup";
+  if (!isPickupOrder) {
+    for (const it of cleanItems) {
+      const p = priceById.get(it.product_id);
+      if (!p) {
+        throw new Error(`Product ${it.product_id} is not available.`);
+      }
+      if (p.stock_qty <= 0) {
+        throw new Error(`"${p.name}" is out of stock.`);
+      }
+      if (it.quantity > p.stock_qty) {
+        throw new Error(`Only ${p.stock_qty} of "${p.name}" available; you requested ${it.quantity}.`);
+      }
     }
-    if (p.stock_qty <= 0) {
-      throw new Error(`"${p.name}" is out of stock.`);
-    }
-    if (it.quantity > p.stock_qty) {
-      throw new Error(`Only ${p.stock_qty} of "${p.name}" available; you requested ${it.quantity}.`);
+  } else {
+    for (const it of cleanItems) {
+      if (!priceById.get(it.product_id)) {
+        throw new Error(`Product ${it.product_id} is not available.`);
+      }
     }
   }
 
@@ -502,6 +518,32 @@ export async function createServerOrder(input: CreateOrderInput): Promise<Create
   if (hasFulfillmentCols) {
     orderRow.fulfillment_method = fulfillmentMethod;
     orderRow.pickup_location    = fulfillmentMethod === "pickup" ? (input.pickup_location ?? null) : null;
+  }
+  // Per-location pickup stock: validate against the selected location, then
+  // bind orders.pickup_location_id (FK) so post-payment decrement and
+  // location-admin scoping can find the order. If the inventory migration
+  // hasn't been applied, gracefully skip — pickup will work but stock won't
+  // be deducted until the admin runs supabase-inventory-migration.sql.
+  const { inventoryTablesExist, orderPickupLocationColExists, getLocationById, checkPickupStock } = await import("./inventory.js");
+  if (fulfillmentMethod === "pickup" && (await inventoryTablesExist())) {
+    const locId = (input.pickup_location_id ?? "").trim();
+    if (!locId) {
+      throw new Error("Please choose a pickup location.");
+    }
+    const loc = await getLocationById(locId);
+    if (!loc || !loc.is_active) {
+      throw new Error("Selected pickup location is not available.");
+    }
+    const stockErr = await checkPickupStock(loc.id, cleanItems);
+    if (stockErr) throw new Error(stockErr);
+    if (await orderPickupLocationColExists()) {
+      orderRow.pickup_location_id = loc.id;
+    }
+    // Always overwrite pickup_location label with the canonical address from
+    // the DB so the admin sees a consistent value even if the client lied.
+    if (hasFulfillmentCols) {
+      orderRow.pickup_location = loc.address || loc.name;
+    }
   }
   // Snapshot membership + coupon onto the order if those columns exist (migration applied).
   const hasMembershipCols = await orderMembershipColumnsExist();

@@ -23,7 +23,7 @@ import {
   membershipTableExists,
 } from "./memberships";
 import { TIERS, isMembershipTier, type MembershipTier } from "./business";
-import { getAuthedUserId, requireAdmin } from "./auth";
+import { getAuthedUserId, requireAdmin, getAdminContext, type AdminContext } from "./auth";
 import {
   ADMIN_ORDER_STATUSES,
   listOrders as adminListOrders,
@@ -31,8 +31,19 @@ import {
   updateOrderStatus as adminUpdateOrderStatus,
   updatePaymentStatus as adminUpdatePaymentStatus,
   todayStats as adminTodayStats,
+  getOrderLocationId,
   type AdminOrderStatus,
 } from "./admin";
+import {
+  listLocations,
+  listInventory,
+  upsertStock,
+  locationAvailability,
+  decrementStockForOrder,
+  inventoryTablesExist,
+  getLocationBySlug,
+  listCategories,
+} from "./inventory";
 
 // Compare two monetary amounts at cent precision.
 function amountsMatch(a: number, b: number): boolean {
@@ -230,6 +241,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Cart is empty." });
       }
 
+      const bodyExt = body as typeof body & { pickup_location_id?: string | null };
       const result = await createServerOrder({
         items: (body.items ?? []).map((it) => ({
           product_id: String(it.product_id ?? ""),
@@ -243,6 +255,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         payment_method:     method,
         fulfillment_method: fulfillment,
         pickup_location:    body.pickup_location ?? null,
+        pickup_location_id: bodyExt.pickup_location_id ?? null,
         user_id:            authedUserId,
         coupon_code:        body.coupon_code ?? null,
       });
@@ -351,8 +364,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "No matching order found for this PayPal payment." });
       }
 
-      // Idempotency: if already paid, return success without re-capturing
+      // Idempotency: if already paid, return success without re-capturing.
+      // BUT also retry stock decrement — a previous capture may have succeeded
+      // while the post-capture decrement failed (network/RPC blip), in which
+      // case `orders.stock_decremented_at` is still NULL and decrementing again
+      // is a no-op for already-applied orders thanks to the marker check.
       if (order.payment_status === "paid") {
+        try { await decrementStockForOrder(order.id); }
+        catch (e) { console.error("[paypal] retry stock deduction failed (non-fatal):", e); }
         return res.json({ success: true, orderId: order.id, status: "ALREADY_PAID" });
       }
       if (order.payment_status === "cancelled" || order.payment_status === "failed") {
@@ -387,6 +406,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // All checks passed — mark order paid
       await updateOrderPaid(order.id, result.captureId, "paypal");
+
+      // Per-location stock deduction for pickup orders. Best-effort (must NOT
+      // fail the response — PayPal already captured the payment). Errors are
+      // logged inside decrementStockForOrder and are visible to admins via the
+      // inventory page (qty stays unchanged so they can correct manually).
+      try {
+        await decrementStockForOrder(order.id);
+      } catch (e) {
+        console.error("[paypal] post-capture stock deduction failed (non-fatal):", e);
+      }
       return res.json({ success: true, orderId: order.id, captureId: result.captureId, status: result.status });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to capture PayPal order";
@@ -543,10 +572,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ── Admin guard helper ─────────────────────────────────────────────────────
-  // All /api/admin/* routes use this so the role check (and the 401/403 reply
-  // shape) lives in exactly one place. requireAdmin() returns the user id when
-  // the caller's Supabase JWT carries app_metadata.role = 'admin', else null.
+  // ── Admin guard helpers ────────────────────────────────────────────────────
+  // ensureAdmin            — super admin only (legacy; for endpoints that need
+  //                          full system-wide privileges).
+  // ensureAdminContext     — accepts EITHER a super admin OR a location admin,
+  //                          and returns an AdminContext describing which.
+  //                          Routes scope their data by ctx.locationSlug.
   async function ensureAdmin(req: Request, res: Response): Promise<string | null> {
     const adminId = await requireAdmin(req);
     if (!adminId) {
@@ -555,17 +586,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     return adminId;
   }
+  async function ensureAdminContext(req: Request, res: Response): Promise<AdminContext | null> {
+    const ctx = await getAdminContext(req);
+    if (!ctx) {
+      res.status(403).json({ error: "Admin access required." });
+      return null;
+    }
+    return ctx;
+  }
+  // Resolve the AdminContext to a concrete pickup_location_id (or null = no
+  // restriction). Returns the [scope info, http error] tuple.
+  async function scopedLocationId(ctx: AdminContext): Promise<{ locationId: string | null; error?: string }> {
+    if (ctx.role === "admin") return { locationId: null };
+    const loc = await getLocationBySlug(ctx.locationSlug ?? "");
+    if (!loc) return { locationId: null, error: "Your assigned pickup location could not be resolved. Apply supabase-inventory-migration.sql or check the user's app_metadata.location slug." };
+    return { locationId: loc.id };
+  }
 
   // ── GET /api/admin/me — lightweight role probe for the frontend guard ────
   app.get("/api/admin/me", async (req: Request, res: Response) => {
-    const adminId = await requireAdmin(req);
-    return res.json({ isAdmin: !!adminId });
+    const ctx = await getAdminContext(req);
+    if (!ctx) return res.json({ isAdmin: false });
+    return res.json({
+      isAdmin: true,
+      role:    ctx.role,                  // 'admin' | 'location_admin'
+      location_slug: ctx.locationSlug,    // null for super admin
+    });
+  });
+
+  // ── GET /api/locations — public list of active pickup locations ──────────
+  // Used by the customer Checkout to render the pickup-location picker.
+  app.get("/api/locations", async (_req: Request, res: Response) => {
+    try {
+      const locs = await listLocations(true);
+      // Strip is_active from the response — only "active=true" rows are returned.
+      return res.json({
+        locations: locs.map((l) => ({ id: l.id, slug: l.slug, name: l.name, address: l.address })),
+      });
+    } catch (err: unknown) {
+      console.error("[GET /api/locations]", err);
+      return res.status(500).json({ error: "Failed to load locations." });
+    }
+  });
+
+  // ── GET /api/locations/:slug/availability — public per-location stock map ─
+  // Returns { product_id: quantity } so the storefront can disable
+  // out-of-stock items in the pickup-location picker.
+  app.get("/api/locations/:slug/availability", async (req: Request, res: Response) => {
+    try {
+      const slug = String(req.params.slug ?? "");
+      if (!/^[a-z0-9_]+$/.test(slug)) return res.status(400).json({ error: "Invalid slug." });
+      const map = await locationAvailability(slug);
+      return res.json({ availability: map });
+    } catch (err: unknown) {
+      console.error("[GET /api/locations/:slug/availability]", err);
+      return res.status(500).json({ error: "Failed to load availability." });
+    }
   });
 
   // ── GET /api/admin/orders — paginated, filtered orders list ──────────────
   app.get("/api/admin/orders", async (req: Request, res: Response) => {
-    if (!(await ensureAdmin(req, res))) return;
+    const ctx = await ensureAdminContext(req, res);
+    if (!ctx) return;
     try {
+      const scope = await scopedLocationId(ctx);
+      if (scope.error) return res.status(503).json({ error: scope.error });
+      // Optional admin-supplied filter (super admin only); location admins
+      // are forced to their own scope regardless of query params.
+      const queryLocId = (req.query.location_id as string | undefined) ?? null;
+      const effectiveLocId = ctx.role === "admin"
+        ? (queryLocId && /^[0-9a-f-]{36}$/i.test(queryLocId) ? queryLocId : null)
+        : scope.locationId;
       const result = await adminListOrders({
         status:      (req.query.status      as string | undefined) ?? null,
         fulfillment: (req.query.fulfillment as string | undefined) ?? null,
@@ -574,6 +665,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         date:        (req.query.date        as string | undefined) ?? null,
         limit:       req.query.limit  ? Number(req.query.limit)  : undefined,
         offset:      req.query.offset ? Number(req.query.offset) : undefined,
+        locationId:  effectiveLocId,
       });
       return res.json(result);
     } catch (err: unknown) {
@@ -582,10 +674,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Helper: ensure the order belongs to the admin's location scope (if any).
+  // Returns true if allowed; sends 403/404 and returns false otherwise.
+  async function ensureOrderInScope(ctx: AdminContext, orderId: string, res: Response): Promise<boolean> {
+    if (ctx.role === "admin") return true;
+    const scope = await scopedLocationId(ctx);
+    if (scope.error) { res.status(503).json({ error: scope.error }); return false; }
+    if (!scope.locationId) { res.status(403).json({ error: "Out of scope." }); return false; }
+    const orderLoc = await getOrderLocationId(orderId);
+    if (orderLoc === undefined) { res.status(404).json({ error: "Order not found." }); return false; }
+    if (orderLoc !== scope.locationId) { res.status(403).json({ error: "Out of scope." }); return false; }
+    return true;
+  }
+
   // ── GET /api/admin/orders/:id — full order detail + items ────────────────
   app.get("/api/admin/orders/:id", async (req: Request, res: Response) => {
-    if (!(await ensureAdmin(req, res))) return;
+    const ctx = await ensureAdminContext(req, res);
+    if (!ctx) return;
     try {
+      if (!(await ensureOrderInScope(ctx, req.params.id, res))) return;
       const detail = await adminGetOrderDetail(req.params.id);
       if (!detail) return res.status(404).json({ error: "Order not found." });
       return res.json(detail);
@@ -597,7 +704,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── PATCH /api/admin/orders/:id — update status and/or payment_status ────
   app.patch("/api/admin/orders/:id", async (req: Request, res: Response) => {
-    if (!(await ensureAdmin(req, res))) return;
+    const ctx = await ensureAdminContext(req, res);
+    if (!ctx) return;
+    if (!(await ensureOrderInScope(ctx, req.params.id, res))) return;
     try {
       const id = req.params.id;
       if (!/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: "Invalid order id." });
@@ -635,12 +744,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── GET /api/admin/stats/today — top-of-dashboard summary tiles ─────────
   app.get("/api/admin/stats/today", async (req: Request, res: Response) => {
-    if (!(await ensureAdmin(req, res))) return;
+    const ctx = await ensureAdminContext(req, res);
+    if (!ctx) return;
     try {
-      return res.json(await adminTodayStats());
+      const scope = await scopedLocationId(ctx);
+      if (scope.error) return res.status(503).json({ error: scope.error });
+      return res.json(await adminTodayStats({ locationId: scope.locationId }));
     } catch (err: unknown) {
       console.error("[GET /api/admin/stats/today]", err);
       return res.status(500).json({ error: "Failed to load stats." });
+    }
+  });
+
+  // ── GET /api/admin/locations — all locations (active + inactive) ─────────
+  // Super admin sees both. Location admin sees only their own.
+  app.get("/api/admin/locations", async (req: Request, res: Response) => {
+    const ctx = await ensureAdminContext(req, res);
+    if (!ctx) return;
+    try {
+      if (!(await inventoryTablesExist())) {
+        return res.json({ locations: [], inventory_enabled: false });
+      }
+      const all = await listLocations(false);
+      const filtered = ctx.role === "admin" ? all : all.filter((l) => l.slug === ctx.locationSlug);
+      return res.json({ locations: filtered, inventory_enabled: true });
+    } catch (err: unknown) {
+      console.error("[GET /api/admin/locations]", err);
+      return res.status(500).json({ error: "Failed to load locations." });
+    }
+  });
+
+  // ── GET /api/admin/inventory/categories — distinct category list ─────────
+  app.get("/api/admin/inventory/categories", async (req: Request, res: Response) => {
+    if (!(await ensureAdminContext(req, res))) return;
+    try {
+      return res.json({ categories: await listCategories() });
+    } catch (err: unknown) {
+      console.error("[GET /api/admin/inventory/categories]", err);
+      return res.status(500).json({ error: "Failed to load categories." });
+    }
+  });
+
+  // ── GET /api/admin/inventory ─────────────────────────────────────────────
+  // Returns the unified inventory grid (one row per product × location). For
+  // location admins the rows are restricted to their assigned location.
+  // Query params: ?q=&category=&low_stock=1&location_slug=
+  app.get("/api/admin/inventory", async (req: Request, res: Response) => {
+    const ctx = await ensureAdminContext(req, res);
+    if (!ctx) return;
+    try {
+      if (!(await inventoryTablesExist())) {
+        return res.json({ inventory: [], inventory_enabled: false, message: "Apply supabase-inventory-migration.sql to enable inventory." });
+      }
+      const requested = (req.query.location_slug as string | undefined) ?? null;
+      // Location admins are FORCED to their own slug regardless of query.
+      const effectiveSlug = ctx.role === "admin" ? requested : ctx.locationSlug;
+      const inventory = await listInventory({
+        locationSlug: effectiveSlug,
+        q:            (req.query.q as string | undefined) ?? null,
+        category:     (req.query.category as string | undefined) ?? null,
+        lowStockOnly: req.query.low_stock === "1" || req.query.low_stock === "true",
+      });
+      return res.json({ inventory, inventory_enabled: true });
+    } catch (err: unknown) {
+      console.error("[GET /api/admin/inventory]", err);
+      return res.status(500).json({ error: "Failed to load inventory." });
+    }
+  });
+
+  // ── PATCH /api/admin/inventory ───────────────────────────────────────────
+  // Body: { product_id, location_id, quantity?, low_stock_threshold? }
+  // Updates one row. Location admins may only update their own location.
+  app.patch("/api/admin/inventory", async (req: Request, res: Response) => {
+    const ctx = await ensureAdminContext(req, res);
+    if (!ctx) return;
+    try {
+      if (!(await inventoryTablesExist())) {
+        return res.status(503).json({ error: "Inventory not enabled. Apply supabase-inventory-migration.sql." });
+      }
+      const body = req.body as {
+        product_id?: string; location_id?: string;
+        quantity?: number; low_stock_threshold?: number;
+      };
+      const productId  = String(body.product_id  ?? "").trim();
+      const locationId = String(body.location_id ?? "").trim();
+      if (!productId || !locationId) {
+        return res.status(400).json({ error: "product_id and location_id are required." });
+      }
+      // Scope check: location admin can only touch their own location.
+      if (ctx.role === "location_admin") {
+        const scope = await scopedLocationId(ctx);
+        if (scope.error) return res.status(503).json({ error: scope.error });
+        if (scope.locationId !== locationId) {
+          return res.status(403).json({ error: "Out of scope: you can only manage your assigned location." });
+        }
+      }
+      const row = await upsertStock({
+        productId,
+        locationId,
+        quantity:          typeof body.quantity === "number" ? body.quantity : undefined,
+        lowStockThreshold: typeof body.low_stock_threshold === "number" ? body.low_stock_threshold : undefined,
+      });
+      return res.json({ ok: true, row });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to update inventory.";
+      console.error("[PATCH /api/admin/inventory]", err);
+      return res.status(400).json({ error: message });
     }
   });
 

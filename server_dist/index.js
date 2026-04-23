@@ -296,6 +296,266 @@ var init_coupons = __esm({
   }
 });
 
+// server/inventory.ts
+var inventory_exports = {};
+__export(inventory_exports, {
+  checkPickupStock: () => checkPickupStock,
+  decrementStockForOrder: () => decrementStockForOrder,
+  getLocationById: () => getLocationById,
+  getLocationBySlug: () => getLocationBySlug,
+  inventoryTablesExist: () => inventoryTablesExist,
+  listCategories: () => listCategories,
+  listInventory: () => listInventory,
+  listLocations: () => listLocations,
+  locationAvailability: () => locationAvailability,
+  orderPickupLocationColExists: () => orderPickupLocationColExists,
+  upsertStock: () => upsertStock
+});
+async function inventoryTablesExist() {
+  if (inventoryTablesExistCache !== null) return inventoryTablesExistCache;
+  try {
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase.from("pickup_locations").select("id").limit(1);
+    inventoryTablesExistCache = !error;
+    if (error) console.warn("[inventory] pickup_locations table missing \u2014 apply supabase-inventory-migration.sql.");
+  } catch {
+    inventoryTablesExistCache = false;
+  }
+  return inventoryTablesExistCache;
+}
+async function productHasSize() {
+  if (productSizeColCache !== null) return productSizeColCache;
+  try {
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase.from("products").select("size").limit(1);
+    productSizeColCache = !error;
+  } catch {
+    productSizeColCache = false;
+  }
+  return productSizeColCache;
+}
+async function orderPickupLocationColExists() {
+  if (orderPickupLocationColCache !== null) return orderPickupLocationColCache;
+  try {
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase.from("orders").select("pickup_location_id").limit(1);
+    orderPickupLocationColCache = !error;
+  } catch {
+    orderPickupLocationColCache = false;
+  }
+  return orderPickupLocationColCache;
+}
+async function listLocations(activeOnly = false) {
+  if (!await inventoryTablesExist()) return [];
+  const supabase = getSupabaseAdmin();
+  let q = supabase.from("pickup_locations").select("id,slug,name,address,is_active").order("name");
+  if (activeOnly) q = q.eq("is_active", true);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data ?? [];
+}
+async function getLocationBySlug(slug) {
+  if (!await inventoryTablesExist()) return null;
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.from("pickup_locations").select("id,slug,name,address,is_active").eq("slug", slug).maybeSingle();
+  if (error) return null;
+  return data ?? null;
+}
+async function getLocationById(id) {
+  if (!await inventoryTablesExist()) return null;
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.from("pickup_locations").select("id,slug,name,address,is_active").eq("id", id).maybeSingle();
+  if (error) return null;
+  return data ?? null;
+}
+async function listInventory(opts) {
+  if (!await inventoryTablesExist()) return [];
+  const supabase = getSupabaseAdmin();
+  let restrictLocationIds = null;
+  if (opts.locationSlug) {
+    const loc = await getLocationBySlug(opts.locationSlug);
+    if (!loc) return [];
+    restrictLocationIds = [loc.id];
+  }
+  let stockQuery = supabase.from("product_stock").select("product_id,location_id,quantity,low_stock_threshold,updated_at");
+  if (restrictLocationIds) stockQuery = stockQuery.in("location_id", restrictLocationIds);
+  const { data: stock, error: stockErr } = await stockQuery;
+  if (stockErr) throw stockErr;
+  const productIds = [...new Set((stock ?? []).map((r) => r.product_id))];
+  const locIds = [...new Set((stock ?? []).map((r) => r.location_id))];
+  const productCols = await productHasSize() ? "id,name,image_url,category,price,size,is_active" : "id,name,image_url,category,price,is_active";
+  const [productsRes, locsRes] = await Promise.all([
+    productIds.length ? supabase.from("products").select(productCols).in("id", productIds) : Promise.resolve({ data: [] }),
+    locIds.length ? supabase.from("pickup_locations").select("id,slug,name").in("id", locIds) : Promise.resolve({ data: [] })
+  ]);
+  const productById = new Map((productsRes.data ?? []).map((p) => [p.id, p]));
+  const locById = new Map((locsRes.data ?? []).map((l) => [l.id, l]));
+  const qLower = (opts.q ?? "").trim().toLowerCase();
+  const cat = (opts.category ?? "").trim().toLowerCase();
+  const rows = [];
+  for (const r of stock ?? []) {
+    const p = productById.get(r.product_id);
+    const l = locById.get(r.location_id);
+    if (!p || !l) continue;
+    if (p.is_active === false) continue;
+    if (cat && (p.category ?? "").toLowerCase() !== cat) continue;
+    if (qLower && !p.name.toLowerCase().includes(qLower)) continue;
+    const qty = Number(r.quantity ?? 0);
+    const thr = Number(r.low_stock_threshold ?? 0);
+    const status = qty <= 0 ? "out" : qty <= thr ? "low" : "in_stock";
+    if (opts.lowStockOnly && status === "in_stock") continue;
+    rows.push({
+      product_id: p.id,
+      product_name: p.name,
+      product_image: p.image_url,
+      product_category: p.category,
+      product_size: p.size ?? null,
+      product_price: Number(p.price ?? 0),
+      location_id: l.id,
+      location_slug: l.slug,
+      location_name: l.name,
+      quantity: qty,
+      low_stock_threshold: thr,
+      status,
+      updated_at: r.updated_at
+    });
+  }
+  rows.sort(
+    (a, b) => a.product_name.localeCompare(b.product_name) || a.location_name.localeCompare(b.location_name)
+  );
+  return rows;
+}
+async function upsertStock(opts) {
+  if (!await inventoryTablesExist()) {
+    throw new Error("Inventory not enabled. Apply supabase-inventory-migration.sql.");
+  }
+  if (!/^[0-9a-f-]{36}$/i.test(opts.productId)) throw new Error("Invalid productId.");
+  if (!/^[0-9a-f-]{36}$/i.test(opts.locationId)) throw new Error("Invalid locationId.");
+  const patch = {
+    product_id: opts.productId,
+    location_id: opts.locationId
+  };
+  if (typeof opts.quantity === "number" && Number.isFinite(opts.quantity)) {
+    patch.quantity = Math.max(0, Math.floor(opts.quantity));
+  }
+  if (typeof opts.lowStockThreshold === "number" && Number.isFinite(opts.lowStockThreshold)) {
+    patch.low_stock_threshold = Math.max(0, Math.floor(opts.lowStockThreshold));
+  }
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("product_stock").upsert(patch, { onConflict: "product_id,location_id" });
+  if (error) throw error;
+  const all = await listInventory({});
+  return all.find((r) => r.product_id === opts.productId && r.location_id === opts.locationId) ?? null;
+}
+async function checkPickupStock(locationId, items) {
+  if (!await inventoryTablesExist()) {
+    return "Per-location inventory is not enabled. Please apply supabase-inventory-migration.sql.";
+  }
+  const supabase = getSupabaseAdmin();
+  const wanted = /* @__PURE__ */ new Map();
+  for (const it of items) {
+    const q = Number(it.quantity ?? 0);
+    if (!it.product_id || !Number.isFinite(q) || q <= 0) continue;
+    wanted.set(it.product_id, (wanted.get(it.product_id) ?? 0) + q);
+  }
+  const ids = [...wanted.keys()];
+  if (ids.length === 0) return null;
+  const [stockRes, prodRes] = await Promise.all([
+    supabase.from("product_stock").select("product_id,quantity").eq("location_id", locationId).in("product_id", ids),
+    supabase.from("products").select("id,name").in("id", ids)
+  ]);
+  const stockMap = new Map(
+    (stockRes.data ?? []).map((s) => [s.product_id, Number(s.quantity ?? 0)])
+  );
+  const nameMap = new Map(
+    (prodRes.data ?? []).map((p) => [p.id, p.name])
+  );
+  for (const [productId, want] of wanted) {
+    const have = stockMap.get(productId) ?? 0;
+    const name = nameMap.get(productId) ?? "Item";
+    if (have <= 0) {
+      return `"${name}" is out of stock at the selected pickup location.`;
+    }
+    if (want > have) {
+      return `Only ${have} of "${name}" available at the selected pickup location; you requested ${want}.`;
+    }
+  }
+  return null;
+}
+async function decrementStockForOrder(orderId) {
+  if (!await inventoryTablesExist()) return;
+  if (!await orderPickupLocationColExists()) return;
+  const supabase = getSupabaseAdmin();
+  const { data: orderRow } = await supabase.from("orders").select("id,pickup_location_id,fulfillment_method,stock_decremented_at").eq("id", orderId).maybeSingle();
+  const order = orderRow;
+  if (!order) return;
+  if (order.fulfillment_method !== "pickup" || !order.pickup_location_id) return;
+  if (order.stock_decremented_at) return;
+  const { data: items } = await supabase.from("order_items").select("product_id,qty").eq("order_id", orderId);
+  const totals = /* @__PURE__ */ new Map();
+  for (const it of items ?? []) {
+    if (!it.product_id || !it.qty || it.qty <= 0) continue;
+    totals.set(it.product_id, (totals.get(it.product_id) ?? 0) + Number(it.qty));
+  }
+  let allApplied = true;
+  for (const [productId, qty] of totals) {
+    const { data, error } = await supabase.rpc("decrement_stock_for_pickup", {
+      p_product_id: productId,
+      p_location_id: order.pickup_location_id,
+      p_qty: qty
+    });
+    if (error) {
+      console.error(`[inventory] decrement RPC error order=${orderId} product=${productId}:`, error);
+      allApplied = false;
+      continue;
+    }
+    const remaining = data ?? null;
+    if (remaining === -1) {
+      console.error(`[inventory] OVERSELL on order=${orderId} product=${productId} qty=${qty} \u2014 insufficient stock at location ${order.pickup_location_id}. Manual reconciliation required.`);
+      allApplied = false;
+    } else if (remaining === null) {
+      console.error(`[inventory] decrement skipped \u2014 no product_stock row for order=${orderId} product=${productId} location=${order.pickup_location_id}.`);
+      allApplied = false;
+    }
+  }
+  if (allApplied) {
+    await supabase.from("orders").update({ stock_decremented_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", orderId);
+  }
+}
+async function locationAvailability(slugOrId) {
+  if (!await inventoryTablesExist()) return {};
+  const isUuid = /^[0-9a-f-]{36}$/i.test(slugOrId);
+  const loc = isUuid ? await getLocationById(slugOrId) : await getLocationBySlug(slugOrId);
+  if (!loc) return {};
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase.from("product_stock").select("product_id,quantity").eq("location_id", loc.id);
+  const out = {};
+  for (const r of data ?? []) {
+    out[r.product_id] = Number(r.quantity ?? 0);
+  }
+  return out;
+}
+async function listCategories() {
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase.from("products").select("category").not("category", "is", null);
+  const set = /* @__PURE__ */ new Set();
+  for (const r of data ?? []) {
+    if (r.category && r.category.trim()) set.add(r.category.trim());
+  }
+  return [...set].sort();
+}
+var inventoryTablesExistCache, productSizeColCache, orderPickupLocationColCache;
+var init_inventory = __esm({
+  "server/inventory.ts"() {
+    "use strict";
+    init_payment();
+    inventoryTablesExistCache = null;
+    productSizeColCache = null;
+    orderPickupLocationColCache = null;
+  }
+});
+
 // server/payment.ts
 var payment_exports = {};
 __export(payment_exports, {
@@ -520,16 +780,25 @@ async function createServerOrder(input) {
   for (const p of products) {
     priceById.set(p.id, { name: p.name, price: Number(p.price ?? 0), stock_qty: Number(p.stock_qty ?? 0) });
   }
-  for (const it of cleanItems) {
-    const p = priceById.get(it.product_id);
-    if (!p) {
-      throw new Error(`Product ${it.product_id} is not available.`);
+  const isPickupOrder = input.fulfillment_method === "pickup";
+  if (!isPickupOrder) {
+    for (const it of cleanItems) {
+      const p = priceById.get(it.product_id);
+      if (!p) {
+        throw new Error(`Product ${it.product_id} is not available.`);
+      }
+      if (p.stock_qty <= 0) {
+        throw new Error(`"${p.name}" is out of stock.`);
+      }
+      if (it.quantity > p.stock_qty) {
+        throw new Error(`Only ${p.stock_qty} of "${p.name}" available; you requested ${it.quantity}.`);
+      }
     }
-    if (p.stock_qty <= 0) {
-      throw new Error(`"${p.name}" is out of stock.`);
-    }
-    if (it.quantity > p.stock_qty) {
-      throw new Error(`Only ${p.stock_qty} of "${p.name}" available; you requested ${it.quantity}.`);
+  } else {
+    for (const it of cleanItems) {
+      if (!priceById.get(it.product_id)) {
+        throw new Error(`Product ${it.product_id} is not available.`);
+      }
     }
   }
   let subtotal = 0;
@@ -613,6 +882,25 @@ async function createServerOrder(input) {
   if (hasFulfillmentCols) {
     orderRow.fulfillment_method = fulfillmentMethod;
     orderRow.pickup_location = fulfillmentMethod === "pickup" ? input.pickup_location ?? null : null;
+  }
+  const { inventoryTablesExist: inventoryTablesExist2, orderPickupLocationColExists: orderPickupLocationColExists2, getLocationById: getLocationById2, checkPickupStock: checkPickupStock2 } = await Promise.resolve().then(() => (init_inventory(), inventory_exports));
+  if (fulfillmentMethod === "pickup" && await inventoryTablesExist2()) {
+    const locId = (input.pickup_location_id ?? "").trim();
+    if (!locId) {
+      throw new Error("Please choose a pickup location.");
+    }
+    const loc = await getLocationById2(locId);
+    if (!loc || !loc.is_active) {
+      throw new Error("Selected pickup location is not available.");
+    }
+    const stockErr = await checkPickupStock2(loc.id, cleanItems);
+    if (stockErr) throw new Error(stockErr);
+    if (await orderPickupLocationColExists2()) {
+      orderRow.pickup_location_id = loc.id;
+    }
+    if (hasFulfillmentCols) {
+      orderRow.pickup_location = loc.address || loc.name;
+    }
   }
   const hasMembershipCols = await orderMembershipColumnsExist();
   if (hasMembershipCols) {
@@ -720,8 +1008,10 @@ async function getAuthedUser(req) {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase.auth.getUser(token);
     if (error || !data?.user?.id) return null;
-    const role = data.user.app_metadata?.role;
-    return { id: data.user.id, role: typeof role === "string" ? role : null };
+    const meta = data.user.app_metadata ?? {};
+    const role = typeof meta.role === "string" ? meta.role : null;
+    const location = typeof meta.location === "string" ? meta.location : null;
+    return { id: data.user.id, role, location };
   } catch (err) {
     console.warn("[auth] getAuthedUser failed:", err);
     return null;
@@ -732,9 +1022,29 @@ async function requireAdmin(req) {
   if (!user || user.role !== "admin") return null;
   return user.id;
 }
+async function getAdminContext(req) {
+  const user = await getAuthedUser(req);
+  if (!user) return null;
+  if (user.role === "admin") {
+    return { userId: user.id, role: "admin", locationSlug: null };
+  }
+  if (user.role === "location_admin" && user.location && /^[a-z0-9_]+$/.test(user.location)) {
+    return { userId: user.id, role: "location_admin", locationSlug: user.location };
+  }
+  return null;
+}
 
 // server/admin.ts
 init_payment();
+async function getOrderLocationId(orderId) {
+  if (!/^[0-9a-f-]{36}$/i.test(orderId)) return void 0;
+  const supabase = getSupabaseAdmin();
+  const inv = await Promise.resolve().then(() => (init_inventory(), inventory_exports));
+  if (!await inv.orderPickupLocationColExists()) return null;
+  const { data, error } = await supabase.from("orders").select("pickup_location_id").eq("id", orderId).maybeSingle();
+  if (error || !data) return void 0;
+  return data.pickup_location_id ?? null;
+}
 var ADMIN_ORDER_STATUSES = [
   "received",
   "confirmed",
@@ -748,7 +1058,10 @@ var BASE_COLS = "id,status,customer_name,customer_phone,delivery_address,deliver
 var EXTENDED_COLS = BASE_COLS + ",fulfillment_method,pickup_location";
 async function selectCols() {
   const mod = await Promise.resolve().then(() => (init_payment(), payment_exports));
-  return await mod.fulfillmentColumnsExist() ? EXTENDED_COLS : BASE_COLS;
+  let cols = await mod.fulfillmentColumnsExist() ? EXTENDED_COLS : BASE_COLS;
+  const inv = await Promise.resolve().then(() => (init_inventory(), inventory_exports));
+  if (await inv.orderPickupLocationColExists()) cols += ",pickup_location_id";
+  return cols;
 }
 async function listOrders(f) {
   const supabase = getSupabaseAdmin();
@@ -759,6 +1072,9 @@ async function listOrders(f) {
   if (f.status && f.status !== "all") query = query.eq("status", f.status);
   if (f.payment && f.payment !== "all") query = query.eq("payment_status", f.payment);
   if (f.fulfillment && f.fulfillment !== "all") query = query.eq("fulfillment_method", f.fulfillment);
+  if (f.locationId) {
+    query = query.eq("pickup_location_id", f.locationId);
+  }
   if (f.date) {
     const start = `${f.date}T00:00:00.000Z`;
     const endDate = /* @__PURE__ */ new Date(`${f.date}T00:00:00.000Z`);
@@ -813,13 +1129,15 @@ async function updatePaymentStatus(id, payment_status) {
   if (error) throw error;
   return data;
 }
-async function todayStats() {
+async function todayStats(opts = {}) {
   const supabase = getSupabaseAdmin();
   const start = /* @__PURE__ */ new Date();
   start.setUTCHours(0, 0, 0, 0);
   const end = new Date(start);
   end.setUTCDate(end.getUTCDate() + 1);
-  const { data, error } = await supabase.from("orders").select("status,payment_status,total,currency_symbol").gte("created_at", start.toISOString()).lt("created_at", end.toISOString());
+  let query = supabase.from("orders").select("status,payment_status,total,currency_symbol").gte("created_at", start.toISOString()).lt("created_at", end.toISOString());
+  if (opts.locationId) query = query.eq("pickup_location_id", opts.locationId);
+  const { data, error } = await query;
   if (error) throw error;
   const rows = data ?? [];
   let total_orders = 0, pending_orders = 0, completed_orders = 0;
@@ -837,6 +1155,7 @@ async function todayStats() {
 }
 
 // server/routes.ts
+init_inventory();
 function amountsMatch(a, b) {
   return Math.round(Number(a) * 100) === Math.round(Number(b) * 100);
 }
@@ -970,6 +1289,7 @@ async function registerRoutes(app2) {
       if (!Array.isArray(body.items) || body.items.length === 0) {
         return res.status(400).json({ error: "Cart is empty." });
       }
+      const bodyExt = body;
       const result = await createServerOrder({
         items: (body.items ?? []).map((it) => ({
           product_id: String(it.product_id ?? ""),
@@ -983,6 +1303,7 @@ async function registerRoutes(app2) {
         payment_method: method,
         fulfillment_method: fulfillment,
         pickup_location: body.pickup_location ?? null,
+        pickup_location_id: bodyExt.pickup_location_id ?? null,
         user_id: authedUserId,
         coupon_code: body.coupon_code ?? null
       });
@@ -1069,6 +1390,11 @@ async function registerRoutes(app2) {
         return res.status(404).json({ error: "No matching order found for this PayPal payment." });
       }
       if (order.payment_status === "paid") {
+        try {
+          await decrementStockForOrder(order.id);
+        } catch (e) {
+          console.error("[paypal] retry stock deduction failed (non-fatal):", e);
+        }
         return res.json({ success: true, orderId: order.id, status: "ALREADY_PAID" });
       }
       if (order.payment_status === "cancelled" || order.payment_status === "failed") {
@@ -1092,6 +1418,11 @@ async function registerRoutes(app2) {
         return res.status(409).json({ error: "Payment currency mismatch." });
       }
       await updateOrderPaid(order.id, result.captureId, "paypal");
+      try {
+        await decrementStockForOrder(order.id);
+      } catch (e) {
+        console.error("[paypal] post-capture stock deduction failed (non-fatal):", e);
+      }
       return res.json({ success: true, orderId: order.id, captureId: result.captureId, status: result.status });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to capture PayPal order";
@@ -1206,13 +1537,61 @@ async function registerRoutes(app2) {
     }
     return adminId;
   }
+  async function ensureAdminContext(req, res) {
+    const ctx = await getAdminContext(req);
+    if (!ctx) {
+      res.status(403).json({ error: "Admin access required." });
+      return null;
+    }
+    return ctx;
+  }
+  async function scopedLocationId(ctx) {
+    if (ctx.role === "admin") return { locationId: null };
+    const loc = await getLocationBySlug(ctx.locationSlug ?? "");
+    if (!loc) return { locationId: null, error: "Your assigned pickup location could not be resolved. Apply supabase-inventory-migration.sql or check the user's app_metadata.location slug." };
+    return { locationId: loc.id };
+  }
   app2.get("/api/admin/me", async (req, res) => {
-    const adminId = await requireAdmin(req);
-    return res.json({ isAdmin: !!adminId });
+    const ctx = await getAdminContext(req);
+    if (!ctx) return res.json({ isAdmin: false });
+    return res.json({
+      isAdmin: true,
+      role: ctx.role,
+      // 'admin' | 'location_admin'
+      location_slug: ctx.locationSlug
+      // null for super admin
+    });
+  });
+  app2.get("/api/locations", async (_req, res) => {
+    try {
+      const locs = await listLocations(true);
+      return res.json({
+        locations: locs.map((l) => ({ id: l.id, slug: l.slug, name: l.name, address: l.address }))
+      });
+    } catch (err) {
+      console.error("[GET /api/locations]", err);
+      return res.status(500).json({ error: "Failed to load locations." });
+    }
+  });
+  app2.get("/api/locations/:slug/availability", async (req, res) => {
+    try {
+      const slug = String(req.params.slug ?? "");
+      if (!/^[a-z0-9_]+$/.test(slug)) return res.status(400).json({ error: "Invalid slug." });
+      const map = await locationAvailability(slug);
+      return res.json({ availability: map });
+    } catch (err) {
+      console.error("[GET /api/locations/:slug/availability]", err);
+      return res.status(500).json({ error: "Failed to load availability." });
+    }
   });
   app2.get("/api/admin/orders", async (req, res) => {
-    if (!await ensureAdmin(req, res)) return;
+    const ctx = await ensureAdminContext(req, res);
+    if (!ctx) return;
     try {
+      const scope = await scopedLocationId(ctx);
+      if (scope.error) return res.status(503).json({ error: scope.error });
+      const queryLocId = req.query.location_id ?? null;
+      const effectiveLocId = ctx.role === "admin" ? queryLocId && /^[0-9a-f-]{36}$/i.test(queryLocId) ? queryLocId : null : scope.locationId;
       const result = await listOrders({
         status: req.query.status ?? null,
         fulfillment: req.query.fulfillment ?? null,
@@ -1220,7 +1599,8 @@ async function registerRoutes(app2) {
         q: req.query.q ?? null,
         date: req.query.date ?? null,
         limit: req.query.limit ? Number(req.query.limit) : void 0,
-        offset: req.query.offset ? Number(req.query.offset) : void 0
+        offset: req.query.offset ? Number(req.query.offset) : void 0,
+        locationId: effectiveLocId
       });
       return res.json(result);
     } catch (err) {
@@ -1228,9 +1608,33 @@ async function registerRoutes(app2) {
       return res.status(500).json({ error: "Failed to load orders." });
     }
   });
+  async function ensureOrderInScope(ctx, orderId, res) {
+    if (ctx.role === "admin") return true;
+    const scope = await scopedLocationId(ctx);
+    if (scope.error) {
+      res.status(503).json({ error: scope.error });
+      return false;
+    }
+    if (!scope.locationId) {
+      res.status(403).json({ error: "Out of scope." });
+      return false;
+    }
+    const orderLoc = await getOrderLocationId(orderId);
+    if (orderLoc === void 0) {
+      res.status(404).json({ error: "Order not found." });
+      return false;
+    }
+    if (orderLoc !== scope.locationId) {
+      res.status(403).json({ error: "Out of scope." });
+      return false;
+    }
+    return true;
+  }
   app2.get("/api/admin/orders/:id", async (req, res) => {
-    if (!await ensureAdmin(req, res)) return;
+    const ctx = await ensureAdminContext(req, res);
+    if (!ctx) return;
     try {
+      if (!await ensureOrderInScope(ctx, req.params.id, res)) return;
       const detail = await getOrderDetail(req.params.id);
       if (!detail) return res.status(404).json({ error: "Order not found." });
       return res.json(detail);
@@ -1240,7 +1644,9 @@ async function registerRoutes(app2) {
     }
   });
   app2.patch("/api/admin/orders/:id", async (req, res) => {
-    if (!await ensureAdmin(req, res)) return;
+    const ctx = await ensureAdminContext(req, res);
+    if (!ctx) return;
+    if (!await ensureOrderInScope(ctx, req.params.id, res)) return;
     try {
       const id = req.params.id;
       if (!/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: "Invalid order id." });
@@ -1271,12 +1677,93 @@ async function registerRoutes(app2) {
     }
   });
   app2.get("/api/admin/stats/today", async (req, res) => {
-    if (!await ensureAdmin(req, res)) return;
+    const ctx = await ensureAdminContext(req, res);
+    if (!ctx) return;
     try {
-      return res.json(await todayStats());
+      const scope = await scopedLocationId(ctx);
+      if (scope.error) return res.status(503).json({ error: scope.error });
+      return res.json(await todayStats({ locationId: scope.locationId }));
     } catch (err) {
       console.error("[GET /api/admin/stats/today]", err);
       return res.status(500).json({ error: "Failed to load stats." });
+    }
+  });
+  app2.get("/api/admin/locations", async (req, res) => {
+    const ctx = await ensureAdminContext(req, res);
+    if (!ctx) return;
+    try {
+      if (!await inventoryTablesExist()) {
+        return res.json({ locations: [], inventory_enabled: false });
+      }
+      const all = await listLocations(false);
+      const filtered = ctx.role === "admin" ? all : all.filter((l) => l.slug === ctx.locationSlug);
+      return res.json({ locations: filtered, inventory_enabled: true });
+    } catch (err) {
+      console.error("[GET /api/admin/locations]", err);
+      return res.status(500).json({ error: "Failed to load locations." });
+    }
+  });
+  app2.get("/api/admin/inventory/categories", async (req, res) => {
+    if (!await ensureAdminContext(req, res)) return;
+    try {
+      return res.json({ categories: await listCategories() });
+    } catch (err) {
+      console.error("[GET /api/admin/inventory/categories]", err);
+      return res.status(500).json({ error: "Failed to load categories." });
+    }
+  });
+  app2.get("/api/admin/inventory", async (req, res) => {
+    const ctx = await ensureAdminContext(req, res);
+    if (!ctx) return;
+    try {
+      if (!await inventoryTablesExist()) {
+        return res.json({ inventory: [], inventory_enabled: false, message: "Apply supabase-inventory-migration.sql to enable inventory." });
+      }
+      const requested = req.query.location_slug ?? null;
+      const effectiveSlug = ctx.role === "admin" ? requested : ctx.locationSlug;
+      const inventory = await listInventory({
+        locationSlug: effectiveSlug,
+        q: req.query.q ?? null,
+        category: req.query.category ?? null,
+        lowStockOnly: req.query.low_stock === "1" || req.query.low_stock === "true"
+      });
+      return res.json({ inventory, inventory_enabled: true });
+    } catch (err) {
+      console.error("[GET /api/admin/inventory]", err);
+      return res.status(500).json({ error: "Failed to load inventory." });
+    }
+  });
+  app2.patch("/api/admin/inventory", async (req, res) => {
+    const ctx = await ensureAdminContext(req, res);
+    if (!ctx) return;
+    try {
+      if (!await inventoryTablesExist()) {
+        return res.status(503).json({ error: "Inventory not enabled. Apply supabase-inventory-migration.sql." });
+      }
+      const body = req.body;
+      const productId = String(body.product_id ?? "").trim();
+      const locationId = String(body.location_id ?? "").trim();
+      if (!productId || !locationId) {
+        return res.status(400).json({ error: "product_id and location_id are required." });
+      }
+      if (ctx.role === "location_admin") {
+        const scope = await scopedLocationId(ctx);
+        if (scope.error) return res.status(503).json({ error: scope.error });
+        if (scope.locationId !== locationId) {
+          return res.status(403).json({ error: "Out of scope: you can only manage your assigned location." });
+        }
+      }
+      const row = await upsertStock({
+        productId,
+        locationId,
+        quantity: typeof body.quantity === "number" ? body.quantity : void 0,
+        lowStockThreshold: typeof body.low_stock_threshold === "number" ? body.low_stock_threshold : void 0
+      });
+      return res.json({ ok: true, row });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update inventory.";
+      console.error("[PATCH /api/admin/inventory]", err);
+      return res.status(400).json({ error: message });
     }
   });
   const httpServer = createServer(app2);

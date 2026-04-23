@@ -30,6 +30,7 @@ All SQL files in the project root **must be applied** in Supabase before their a
 1. `supabase-payment-migration.sql` — payment columns on `orders`. Required for the basic checkout / PayPal flow.
 2. `supabase-membership-coupon-migration.sql` — `user_memberships`, `coupons`, `coupon_redemptions` tables + membership/coupon snapshot columns on `orders`. Required for the membership tier system and coupon codes.
 3. `supabase-admin-migration.sql` — expands `orders.status` check constraint (adds `confirmed`, `ready_for_pickup`) and adds `orders` + `order_items` to the `supabase_realtime` publication. Required for the admin merchant panel.
+4. `supabase-inventory-migration.sql` — creates `locations` (Bridgetown, St. George) + `product_stock` (per-location quantity & low-stock threshold), adds `pickup_location_id` FK on `orders`, and adds RLS so location_admins only see their own location's data. Required for **per-location inventory management**, the pickup-location picker on checkout, and post-payment stock decrement.
 
 **Steps:**
 1. Open your Supabase project → SQL Editor → New Query
@@ -45,24 +46,64 @@ All SQL files in the project root **must be applied** in Supabase before their a
 
 ## Admin Merchant Panel (`/admin`)
 
-- **URL**: `/admin` — full-width responsive dashboard (mobile, tablet, desktop). Bypasses customer splash + age gate. Bottom nav is hidden for admin routes.
-- **Authorization**: `server/auth.ts → requireAdmin(req)` checks the JWT `app_metadata.role === 'admin'`. ALL `/api/admin/*` routes are gated by this. `app_metadata` is service-role-only — users cannot promote themselves.
-  - Promote a user to admin (run once in Supabase SQL editor):
+- **URLs**: full-width responsive dashboard (mobile, tablet, desktop) with a sub-nav strip across the top:
+  - `/admin` — Orders (live feed)
+  - `/admin/inventory` — per-location stock with inline edit
+  - `/admin/low-stock` — items at or below their threshold (single-click triage view)
+  - `/admin/completed` — completed orders only (status filter is locked)
+  Bypasses customer splash + age gate. Bottom nav is hidden for admin routes.
+- **Authorization**: `server/auth.ts → ensureAdminContext(req)` checks the JWT `app_metadata.role`. Two roles are recognised, both gated server-side (`app_metadata` is service-role-only — users cannot promote themselves):
+  - `admin` (super-admin) — sees all orders, all locations, all inventory.
+  - `location_admin` — must also have `app_metadata.location` set to a location slug (e.g. `bridgetown`, `st_george`). All admin queries are auto-scoped to that location: orders, stats, inventory.
+  - Promote a super-admin (run once in Supabase SQL editor):
     ```sql
     update auth.users
        set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"role":"admin"}'::jsonb
-     where email = 'admin@example.com';
+     where email = 'owner@example.com';
     ```
-- **Frontend guard**: `web/src/pages/admin/AdminGuard.tsx` — bounces unauthenticated users to `/auth/login`, shows access-denied for non-admin users, renders dashboard for admins. Real authorization is server-side; the guard only decides what UI to show.
-- **API endpoints** (all require admin JWT):
-  - `GET   /api/admin/me` — `{ isAdmin: bool }`
+  - Assign a location-admin (slug must match a row in `locations.slug`):
+    ```sql
+    update auth.users
+       set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb)
+                             || '{"role":"location_admin","location":"bridgetown"}'::jsonb
+     where email = 'bridgetown-manager@example.com';
+    ```
+- **Frontend guard**: `web/src/pages/admin/AdminGuard.tsx` — bounces unauthenticated users to `/auth/login`, shows access-denied for non-admin users. Real authorization is server-side; the guard only decides what UI to show.
+- **API endpoints** (all require admin JWT; all auto-scoped for `location_admin`):
+  - `GET   /api/admin/me` — `{ isAdmin, role, location_slug }`
   - `GET   /api/admin/orders?status=&fulfillment=&payment=&q=&date=&limit=&offset=` — paginated list + count
-  - `GET   /api/admin/orders/:id` — full order + items
-  - `PATCH /api/admin/orders/:id` — update `status` and/or `payment_status` (paid_at auto-stamped when marking paid)
+  - `GET   /api/admin/orders/:id` — full order + items (404 if outside the admin's location scope)
+  - `PATCH /api/admin/orders/:id` — update `status` and/or `payment_status` (`paid_at` auto-stamped when marking paid)
   - `GET   /api/admin/stats/today` — total orders, pending, completed, sales, paid sales
-- **Realtime**: dashboard subscribes to `postgres_changes` on `public.orders` via supabase-js; new orders trigger a refetch + golden chime + on-screen badge. Admin RLS (`admin manage orders`) gates realtime delivery server-side.
-- **Status mapping**: customer-tracking values stay (`received, packing, out_for_delivery, delivered, refused`); admin gets two new values (`confirmed`, `ready_for_pickup`) and presents friendly labels (New, Confirmed, Preparing, Out for Delivery, Ready for Pickup, Completed, Cancelled).
-- **Files**: `server/admin.ts`, `server/routes.ts` (admin block), `web/src/pages/admin/AdminDashboard.tsx`, `web/src/pages/admin/AdminGuard.tsx`, `supabase-admin-migration.sql`.
+  - `GET   /api/admin/locations` — `{ locations: [...], inventory_enabled: bool }`
+  - `GET   /api/admin/inventory?q=&category=&location_slug=&low_stock=1` — joined product × location × stock rows with `status: in_stock | low | out`
+  - `PATCH /api/admin/inventory` — body `{ product_id, location_id, quantity?, low_stock_threshold? }`; upserts the row, returns the refreshed row
+  - `GET   /api/admin/inventory/categories` — distinct product categories for the filter dropdown
+- **Public location endpoints** (no auth required — used by Checkout):
+  - `GET /api/locations` — active pickup locations (id, slug, name, address)
+  - `GET /api/locations/:slug/availability` — stock availability for a given product list at one location (used by future cart-side stock checks)
+- **Realtime**: Orders dashboard subscribes to `postgres_changes` on `public.orders`; new orders trigger refetch + golden chime + badge. RLS gates delivery so location_admins only get notified for their location.
+- **Status mapping**: customer-tracking values stay (`received, packing, out_for_delivery, delivered, refused`); admin gets two extra values (`confirmed`, `ready_for_pickup`).
+- **Files**: `server/admin.ts`, `server/auth.ts` (`ensureAdminContext`), `server/inventory.ts`, `server/routes.ts` (admin + inventory + locations blocks), `web/src/pages/admin/{AdminDashboard,AdminTabs,InventoryPage,AdminGuard}.tsx`, `supabase-admin-migration.sql`, `supabase-inventory-migration.sql`.
+
+## Inventory & Pickup Locations
+
+- **Locations**: seeded by the migration — `bridgetown` ("Bridgetown") and `st_george` ("St. George"). Add more via SQL by inserting into `public.locations` with a slug matching `^[a-z0-9_]+$`.
+- **Per-location stock**: `product_stock(product_id, location_id, quantity, low_stock_threshold)` is the single source of truth for pickup orders. The legacy `products.stock_qty` column is ignored on pickup orders once the migration is applied.
+- **Pickup-location picker**: Checkout fetches `/api/locations` and renders one card per active location. The chosen `pickup_location_id` is sent on `POST /api/orders/create` and saved on the order via the new FK column. If the migration hasn't run yet, Checkout silently falls back to the static `PICKUP_LOCATION` constant.
+- **Stock validation on checkout**: `server/payment.ts` validates per-location stock for pickup orders BEFORE creating the order; insufficient stock returns a 400 with the offending product name.
+- **Stock decrement after payment**: `decrementStockForOrder()` runs from `/api/paypal/capture-order` immediately after `updateOrderPaid()`. It only fires for paid pickup orders bound to a `pickup_location_id`. The decrement is:
+  - **Atomic per-product** — uses an `UPDATE … WHERE quantity >= p_qty RETURNING quantity` in the `decrement_stock_for_pickup` Postgres function. Two concurrent buyers cannot both succeed once stock is exhausted; the loser logs a loud `OVERSELL` warning instead of silently clamping to zero.
+  - **Aggregated by `product_id`** in both pre-checkout validation (`checkPickupStock`) and post-payment decrement so duplicate cart line items can't bypass the check.
+  - **Idempotent** — `orders.stock_decremented_at` is stamped only when every line item applied successfully. Capture retries (`status: "ALREADY_PAID"` path) re-call `decrementStockForOrder` so a one-time RPC failure can self-heal on the next user action without ever double-decrementing.
+  - **Non-blocking** — failures are logged but never fail the capture response (the customer still sees their order paid; the merchant resolves any discrepancy in the inventory tab).
+- **Low-stock view**: `/admin/low-stock` is the same `InventoryPage` component pre-filtered with `low_stock=1`. Status badge colors: `in_stock` (green), `low` (gold), `out` (red).
+- **Testing stock deduction end-to-end**:
+  1. Apply `supabase-inventory-migration.sql` in the Supabase SQL editor.
+  2. In `/admin/inventory`, set a product's quantity at "Bridgetown" to a small number (e.g. `5`) and Save.
+  3. As a customer, add that product to cart, choose **Pick Up** → **Bridgetown**, complete checkout via PayPal sandbox.
+  4. After the success page returns, refresh `/admin/inventory` — the Bridgetown row's quantity for that product should have decreased by the ordered quantity. The corresponding `product_stock.updated_at` will be refreshed.
+  5. Switching the picker to **St. George** for the same product should NOT affect Bridgetown's count.
 
 ## Payment System
 

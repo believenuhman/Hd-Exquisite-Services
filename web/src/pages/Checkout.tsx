@@ -26,6 +26,11 @@ export function Checkout() {
 
   const [zones, setZones]               = useState<DeliveryZone[]>([]);
   const [selectedZone, setSelectedZone] = useState<DeliveryZone | null>(null);
+  // Pickup locations come from the server (Bridgetown / St. George, etc.)
+  // and only matter when fulfillment === "pickup".
+  type PickupLoc = { id: string; slug: string; name: string; address: string };
+  const [pickupLocs,    setPickupLocs]   = useState<PickupLoc[]>([]);
+  const [pickupLocId,   setPickupLocId]  = useState<string>(() => storage.get("hd_saved_pickup_loc_id") ?? "");
   const [name, setName]       = useState(() => storage.get("hd_saved_name")    ?? user?.user_metadata?.full_name ?? "");
   const [phone, setPhone]     = useState(() => storage.get("hd_saved_phone")   ?? user?.user_metadata?.phone     ?? "");
   const [address, setAddress] = useState(() => storage.get("hd_saved_address") ?? storage.get("hd_profile_address") ?? "");
@@ -72,6 +77,27 @@ export function Checkout() {
       .then(({ data }) => { if (data) setZones(data as DeliveryZone[]); })
       .catch(() => {});
   }, []);
+
+  // Fetch active pickup locations once. Falls back to the static
+  // PICKUP_LOCATION constant if the inventory migration hasn't been applied.
+  useEffect(() => {
+    fetch("/api/locations").then(async (r) => {
+      if (!r.ok) return;
+      const d = await r.json() as { locations: PickupLoc[] };
+      setPickupLocs(d.locations ?? []);
+      // Default selection: the previously saved location id if it's still
+      // available, otherwise the first active location.
+      setPickupLocId((cur) => {
+        if (cur && (d.locations ?? []).some((l) => l.id === cur)) return cur;
+        return (d.locations?.[0]?.id) ?? "";
+      });
+    }).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (pickupLocId) storage.set("hd_saved_pickup_loc_id", pickupLocId);
+  }, [pickupLocId]);
+
+  const selectedPickupLoc = pickupLocs.find((l) => l.id === pickupLocId) ?? null;
 
   const baseDeliveryFee = fulfillment === "pickup"
     ? 0
@@ -142,6 +168,9 @@ export function Checkout() {
     if (fulfillment === "pickup" && paymentMethod !== "online_card") {
       return "Pickup orders must be paid online.";
     }
+    if (fulfillment === "pickup" && pickupLocs.length > 0 && !pickupLocId) {
+      return "Please choose a pickup location.";
+    }
     if (!ageConfirm)     return "You must confirm you are 18+ years old.";
     if (!idConfirm)      return "You must confirm you have valid ID.";
     if (items.length === 0) return "Your cart is empty.";
@@ -164,7 +193,10 @@ export function Checkout() {
         zone_id:            fulfillment === "delivery" ? (selectedZone?.id ?? null) : null,
         payment_method:     method,
         fulfillment_method: fulfillment,
-        pickup_location:    fulfillment === "pickup" ? PICKUP_LOCATION : null,
+        // Send both: address label (legacy column) AND the FK so the server
+        // can scope orders to the correct location and decrement stock.
+        pickup_location:    fulfillment === "pickup" ? (selectedPickupLoc?.address ?? PICKUP_LOCATION) : null,
+        pickup_location_id: fulfillment === "pickup" ? (pickupLocId || null) : null,
         coupon_code:        appliedCoupon?.code ?? null,
       }),
     });
@@ -301,17 +333,51 @@ export function Checkout() {
             })}
           </div>
 
-          {/* Pickup location card */}
+          {/* Pickup location picker — fetched from /api/locations */}
           {fulfillment === "pickup" && (
-            <div className="mt-3 flex items-start gap-2 p-3 rounded-xl" style={{ background: "rgba(228,161,43,0.06)", border: "1px solid rgba(228,161,43,0.2)" }}>
-              <IoLocationSharp size={16} color="#E4A12B" style={{ marginTop: 2, flexShrink: 0 }} />
-              <div>
-                <p className="font-inter text-xs font-semibold" style={{ color: "#E4A12B" }}>Pickup Location</p>
-                <p className="font-inter text-sm text-white mt-0.5">{PICKUP_LOCATION}</p>
-                <p className="font-inter text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>
-                  Pickup orders must be paid online. We'll text you on the number below when your order is ready.
-                </p>
-              </div>
+            <div className="mt-3">
+              <p className="font-inter text-[11px] font-semibold uppercase tracking-widest mb-2" style={{ color: "rgba(255,255,255,0.5)" }}>
+                Choose a Pickup Location
+              </p>
+              {pickupLocs.length === 0 ? (
+                <div className="flex items-start gap-2 p-3 rounded-xl" style={{ background: "rgba(228,161,43,0.06)", border: "1px solid rgba(228,161,43,0.2)" }}>
+                  <IoLocationSharp size={16} color="#E4A12B" style={{ marginTop: 2, flexShrink: 0 }} />
+                  <div>
+                    <p className="font-inter text-sm text-white">{PICKUP_LOCATION}</p>
+                    <p className="font-inter text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>
+                      Pickup orders must be paid online.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-2">
+                  {pickupLocs.map((loc) => {
+                    const active = pickupLocId === loc.id;
+                    return (
+                      <button key={loc.id} onClick={() => setPickupLocId(loc.id)}
+                        className="flex items-start gap-2 p-3 rounded-xl press-active text-left"
+                        style={{
+                          background: active ? "rgba(228,161,43,0.1)" : "rgba(255,255,255,0.03)",
+                          border: `1.5px solid ${active ? "rgba(228,161,43,0.5)" : "rgba(255,255,255,0.08)"}`,
+                          transition: "all 0.2s",
+                        }}>
+                        <IoLocationSharp size={16} color={active ? "#E4A12B" : "rgba(255,255,255,0.4)"} style={{ marginTop: 2, flexShrink: 0 }} />
+                        <div className="min-w-0">
+                          <p className="font-inter text-sm font-semibold" style={{ color: active ? "#fff" : "rgba(255,255,255,0.85)" }}>
+                            {loc.name}
+                          </p>
+                          <p className="font-inter text-[12px] mt-0.5" style={{ color: "rgba(255,255,255,0.55)" }}>
+                            {loc.address}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  <p className="font-inter text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>
+                    Pickup orders must be paid online. We'll text you when your order is ready.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

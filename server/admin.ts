@@ -1,8 +1,21 @@
 // Admin dashboard data layer. Every function here uses the service-role
 // Supabase client (bypasses RLS) but is ONLY ever called from routes guarded
-// by `requireAdmin(req)` in server/routes.ts — so authorization is enforced
-// at the route layer, never the data layer.
+// by `requireAdmin(req)` / `getAdminContext(req)` in server/routes.ts — so
+// authorization is enforced at the route layer, never the data layer.
 import { getSupabaseAdmin } from "./payment";
+
+// Light-weight order lookup for scope checks (location_admin can only act on
+// orders bound to their own pickup_location_id).
+export async function getOrderLocationId(orderId: string): Promise<string | null | undefined> {
+  if (!/^[0-9a-f-]{36}$/i.test(orderId)) return undefined;
+  const supabase = getSupabaseAdmin();
+  const inv = await import("./inventory.js");
+  if (!(await inv.orderPickupLocationColExists())) return null; // column not present yet
+  const { data, error } = await supabase
+    .from("orders").select("pickup_location_id").eq("id", orderId).maybeSingle();
+  if (error || !data) return undefined;
+  return ((data as { pickup_location_id: string | null }).pickup_location_id) ?? null;
+}
 
 export type AdminOrderStatus =
   | "received" | "confirmed" | "packing" | "out_for_delivery"
@@ -22,6 +35,9 @@ export type ListOrdersFilters = {
   date?:        string | null;   // YYYY-MM-DD (filter by created_at on that local day, UTC-relative)
   limit?:       number;
   offset?:      number;
+  // Restrict to orders for this pickup location id (used for location_admin
+  // scoping). Super-admin queries pass null/undefined for full access.
+  locationId?:  string | null;
 };
 
 const BASE_COLS =
@@ -34,7 +50,12 @@ async function selectCols(): Promise<string> {
   // Reuse the existing fulfillment-column probe from payment.ts so older DBs
   // (which haven't run supabase-fulfillment-migration.sql yet) still load.
   const mod = await import("./payment.js");
-  return (await mod.fulfillmentColumnsExist()) ? EXTENDED_COLS : BASE_COLS;
+  let cols = (await mod.fulfillmentColumnsExist()) ? EXTENDED_COLS : BASE_COLS;
+  // Surface the FK so the dashboard can drive location-aware UI without an
+  // extra round-trip. Only include if the inventory migration has been run.
+  const inv = await import("./inventory.js");
+  if (await inv.orderPickupLocationColExists()) cols += ",pickup_location_id";
+  return cols;
 }
 
 export async function listOrders(f: ListOrdersFilters): Promise<{ orders: unknown[]; total: number }> {
@@ -49,6 +70,10 @@ export async function listOrders(f: ListOrdersFilters): Promise<{ orders: unknow
   if (f.status      && f.status      !== "all") query = query.eq("status", f.status);
   if (f.payment     && f.payment     !== "all") query = query.eq("payment_status", f.payment);
   if (f.fulfillment && f.fulfillment !== "all") query = query.eq("fulfillment_method", f.fulfillment);
+  if (f.locationId) {
+    // Location-admin scope: only orders bound to their pickup_location_id.
+    query = query.eq("pickup_location_id", f.locationId);
+  }
 
   if (f.date) {
     // Treat the date as a UTC day window. Good enough for the admin's
@@ -132,7 +157,7 @@ export async function updatePaymentStatus(id: string, payment_status: string): P
   return data;
 }
 
-export async function todayStats(): Promise<{
+export async function todayStats(opts: { locationId?: string | null } = {}): Promise<{
   total_orders:     number;
   pending_orders:   number;
   completed_orders: number;
@@ -146,11 +171,13 @@ export async function todayStats(): Promise<{
   const end = new Date(start);
   end.setUTCDate(end.getUTCDate() + 1);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("orders")
     .select("status,payment_status,total,currency_symbol")
     .gte("created_at", start.toISOString())
     .lt("created_at", end.toISOString());
+  if (opts.locationId) query = query.eq("pickup_location_id", opts.locationId);
+  const { data, error } = await query;
   if (error) throw error;
 
   const rows = (data ?? []) as Array<{ status: string; payment_status: string; total: number; currency_symbol: string }>;

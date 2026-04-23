@@ -8,6 +8,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { authedFetch } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
+import { AdminTabs } from "./AdminTabs";
 
 // Status definitions live here so labels + colors stay consistent across the
 // table, the badge, and the status-change dropdown in the detail drawer.
@@ -378,7 +379,15 @@ type Stats = {
   total_sales: number; paid_sales: number; currency_symbol: string;
 };
 
-export function AdminDashboard() {
+export function AdminDashboard({
+  defaultStatus = "all",
+  lockStatus    = false,
+  title         = "Merchant Panel",
+}: {
+  defaultStatus?: string;
+  lockStatus?:    boolean;   // true on /admin/completed — prevents the user from changing the status filter
+  title?:         string;
+} = {}) {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const [orders, setOrders]   = useState<AdminOrder[]>([]);
@@ -388,7 +397,9 @@ export function AdminDashboard() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Filters
-  const [status, setStatus]           = useState("all");
+  const [status, setStatus]           = useState(defaultStatus);
+  // Re-sync if the route changes (e.g. user clicks "Completed" tab while on Orders).
+  useEffect(() => { setStatus(defaultStatus); }, [defaultStatus]);
   const [fulfillment, setFulfillment] = useState("all");
   const [payment, setPayment]         = useState("all");
   const [date, setDate]               = useState<string>("");
@@ -470,7 +481,7 @@ export function AdminDashboard() {
       }}>
         <div>
           <div style={{ fontSize: 12, color: "#8C8C95", letterSpacing: 1.4, textTransform: "uppercase" }}>HD Xquisite Liquors</div>
-          <div style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>Merchant Panel</div>
+          <div style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>{title}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button onClick={() => setSoundOn((s) => !s)} title={soundOn ? "Mute new-order chime" : "Enable new-order chime"} style={iconBtn}>
@@ -482,6 +493,7 @@ export function AdminDashboard() {
           </button>
         </div>
       </div>
+      <AdminTabs />
 
       {/* New-order toast */}
       {newOrderFlash > 0 && (
@@ -538,10 +550,12 @@ export function AdminDashboard() {
 
         {showFilters && (
           <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
-            <Select label="Status" value={status} onChange={setStatus} options={[
-              { value: "all", label: "All statuses" },
-              ...STATUSES.map((s) => ({ value: s.value, label: s.label })),
-            ]} />
+            {!lockStatus && (
+              <Select label="Status" value={status} onChange={setStatus} options={[
+                { value: "all", label: "All statuses" },
+                ...STATUSES.map((s) => ({ value: s.value, label: s.label })),
+              ]} />
+            )}
             <Select label="Type" value={fulfillment} onChange={setFulfillment} options={[
               { value: "all", label: "All types" },
               { value: "delivery", label: "Delivery" },
