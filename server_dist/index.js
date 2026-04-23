@@ -706,6 +706,10 @@ import { createServer } from "node:http";
 // server/auth.ts
 init_payment();
 async function getAuthedUserId(req) {
+  const user = await getAuthedUser(req);
+  return user?.id ?? null;
+}
+async function getAuthedUser(req) {
   const header = req.header("authorization") ?? req.header("Authorization");
   if (!header) return null;
   const m = /^Bearer\s+(.+)$/i.exec(header.trim());
@@ -716,11 +720,120 @@ async function getAuthedUserId(req) {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase.auth.getUser(token);
     if (error || !data?.user?.id) return null;
-    return data.user.id;
+    const role = data.user.app_metadata?.role;
+    return { id: data.user.id, role: typeof role === "string" ? role : null };
   } catch (err) {
-    console.warn("[auth] getAuthedUserId failed:", err);
+    console.warn("[auth] getAuthedUser failed:", err);
     return null;
   }
+}
+async function requireAdmin(req) {
+  const user = await getAuthedUser(req);
+  if (!user || user.role !== "admin") return null;
+  return user.id;
+}
+
+// server/admin.ts
+init_payment();
+var ADMIN_ORDER_STATUSES = [
+  "received",
+  "confirmed",
+  "packing",
+  "out_for_delivery",
+  "ready_for_pickup",
+  "delivered",
+  "refused"
+];
+var BASE_COLS = "id,status,customer_name,customer_phone,delivery_address,delivery_notes,subtotal,delivery_fee,total,currency_code,currency_symbol,created_at,payment_method,payment_status,payment_reference,paid_at,zone_id";
+var EXTENDED_COLS = BASE_COLS + ",fulfillment_method,pickup_location";
+async function selectCols() {
+  const mod = await Promise.resolve().then(() => (init_payment(), payment_exports));
+  return await mod.fulfillmentColumnsExist() ? EXTENDED_COLS : BASE_COLS;
+}
+async function listOrders(f) {
+  const supabase = getSupabaseAdmin();
+  const cols = await selectCols();
+  const limit = Math.min(Math.max(f.limit ?? 50, 1), 200);
+  const offset = Math.max(f.offset ?? 0, 0);
+  let query = supabase.from("orders").select(cols, { count: "exact" });
+  if (f.status && f.status !== "all") query = query.eq("status", f.status);
+  if (f.payment && f.payment !== "all") query = query.eq("payment_status", f.payment);
+  if (f.fulfillment && f.fulfillment !== "all") query = query.eq("fulfillment_method", f.fulfillment);
+  if (f.date) {
+    const start = `${f.date}T00:00:00.000Z`;
+    const endDate = /* @__PURE__ */ new Date(`${f.date}T00:00:00.000Z`);
+    endDate.setUTCDate(endDate.getUTCDate() + 1);
+    const end = endDate.toISOString();
+    query = query.gte("created_at", start).lt("created_at", end);
+  }
+  const q = (f.q ?? "").trim();
+  if (q) {
+    const isUuid = /^[0-9a-f-]{36}$/i.test(q);
+    const escaped = q.replace(/[%,]/g, " ");
+    const filters = [
+      `customer_name.ilike.%${escaped}%`,
+      `customer_phone.ilike.%${escaped}%`
+    ];
+    if (isUuid) filters.push(`id.eq.${q}`);
+    query = query.or(filters.join(","));
+  }
+  query = query.order("created_at", { ascending: false }).range(offset, offset + limit - 1);
+  const { data, error, count } = await query;
+  if (error) throw error;
+  return { orders: data ?? [], total: count ?? 0 };
+}
+async function getOrderDetail(id) {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const supabase = getSupabaseAdmin();
+  const cols = await selectCols();
+  const [orderRes, itemsRes] = await Promise.all([
+    supabase.from("orders").select(cols + ",coupon_code,coupon_discount,membership_tier,membership_discount,refusal_reason").eq("id", id).maybeSingle(),
+    supabase.from("order_items").select("id,product_id,name,qty,unit_price").eq("order_id", id)
+  ]);
+  if (orderRes.error) {
+    const fallback = await supabase.from("orders").select(cols + ",refusal_reason").eq("id", id).maybeSingle();
+    if (fallback.error) throw fallback.error;
+    if (!fallback.data) return null;
+    return { order: fallback.data, items: itemsRes.data ?? [] };
+  }
+  if (!orderRes.data) return null;
+  return { order: orderRes.data, items: itemsRes.data ?? [] };
+}
+async function updateOrderStatus(id, status) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.from("orders").update({ status }).eq("id", id).select("id,status").maybeSingle();
+  if (error) throw error;
+  return data;
+}
+async function updatePaymentStatus(id, payment_status) {
+  const supabase = getSupabaseAdmin();
+  const patch = { payment_status };
+  if (payment_status === "paid") patch.paid_at = (/* @__PURE__ */ new Date()).toISOString();
+  const { data, error } = await supabase.from("orders").update(patch).eq("id", id).select("id,payment_status,paid_at").maybeSingle();
+  if (error) throw error;
+  return data;
+}
+async function todayStats() {
+  const supabase = getSupabaseAdmin();
+  const start = /* @__PURE__ */ new Date();
+  start.setUTCHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 1);
+  const { data, error } = await supabase.from("orders").select("status,payment_status,total,currency_symbol").gte("created_at", start.toISOString()).lt("created_at", end.toISOString());
+  if (error) throw error;
+  const rows = data ?? [];
+  let total_orders = 0, pending_orders = 0, completed_orders = 0;
+  let total_sales = 0, paid_sales = 0;
+  let currency_symbol = "$";
+  for (const r of rows) {
+    total_orders += 1;
+    total_sales += Number(r.total) || 0;
+    if (r.currency_symbol) currency_symbol = r.currency_symbol;
+    if (r.status === "delivered") completed_orders += 1;
+    else if (r.status !== "refused") pending_orders += 1;
+    if (r.payment_status === "paid") paid_sales += Number(r.total) || 0;
+  }
+  return { total_orders, pending_orders, completed_orders, total_sales, paid_sales, currency_symbol };
 }
 
 // server/routes.ts
@@ -1083,6 +1196,87 @@ async function registerRoutes(app2) {
     } catch (err) {
       console.error("[GET /api/orders/:id]", err);
       return res.status(500).json({ error: "Failed to load order." });
+    }
+  });
+  async function ensureAdmin(req, res) {
+    const adminId = await requireAdmin(req);
+    if (!adminId) {
+      res.status(403).json({ error: "Admin access required." });
+      return null;
+    }
+    return adminId;
+  }
+  app2.get("/api/admin/me", async (req, res) => {
+    const adminId = await requireAdmin(req);
+    return res.json({ isAdmin: !!adminId });
+  });
+  app2.get("/api/admin/orders", async (req, res) => {
+    if (!await ensureAdmin(req, res)) return;
+    try {
+      const result = await listOrders({
+        status: req.query.status ?? null,
+        fulfillment: req.query.fulfillment ?? null,
+        payment: req.query.payment ?? null,
+        q: req.query.q ?? null,
+        date: req.query.date ?? null,
+        limit: req.query.limit ? Number(req.query.limit) : void 0,
+        offset: req.query.offset ? Number(req.query.offset) : void 0
+      });
+      return res.json(result);
+    } catch (err) {
+      console.error("[GET /api/admin/orders]", err);
+      return res.status(500).json({ error: "Failed to load orders." });
+    }
+  });
+  app2.get("/api/admin/orders/:id", async (req, res) => {
+    if (!await ensureAdmin(req, res)) return;
+    try {
+      const detail = await getOrderDetail(req.params.id);
+      if (!detail) return res.status(404).json({ error: "Order not found." });
+      return res.json(detail);
+    } catch (err) {
+      console.error("[GET /api/admin/orders/:id]", err);
+      return res.status(500).json({ error: "Failed to load order." });
+    }
+  });
+  app2.patch("/api/admin/orders/:id", async (req, res) => {
+    if (!await ensureAdmin(req, res)) return;
+    try {
+      const id = req.params.id;
+      if (!/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: "Invalid order id." });
+      const body = req.body ?? {};
+      let order = null;
+      let didUpdate = false;
+      if (body.status !== void 0) {
+        if (!ADMIN_ORDER_STATUSES.includes(body.status)) {
+          return res.status(400).json({ error: "Invalid status." });
+        }
+        order = await updateOrderStatus(id, body.status);
+        didUpdate = true;
+      }
+      if (body.payment_status !== void 0) {
+        const allowed = ["pending", "paid", "failed", "cancelled", "refunded"];
+        if (!allowed.includes(body.payment_status)) {
+          return res.status(400).json({ error: "Invalid payment_status." });
+        }
+        order = await updatePaymentStatus(id, body.payment_status);
+        didUpdate = true;
+      }
+      if (!didUpdate) return res.status(400).json({ error: "Nothing to update." });
+      if (order === null) return res.status(404).json({ error: "Order not found." });
+      return res.json({ ok: true, order });
+    } catch (err) {
+      console.error("[PATCH /api/admin/orders/:id]", err);
+      return res.status(500).json({ error: "Failed to update order." });
+    }
+  });
+  app2.get("/api/admin/stats/today", async (req, res) => {
+    if (!await ensureAdmin(req, res)) return;
+    try {
+      return res.json(await todayStats());
+    } catch (err) {
+      console.error("[GET /api/admin/stats/today]", err);
+      return res.status(500).json({ error: "Failed to load stats." });
     }
   });
   const httpServer = createServer(app2);

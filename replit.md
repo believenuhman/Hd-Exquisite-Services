@@ -25,10 +25,11 @@ A premium liquor delivery web app (React + Vite + Tailwind) built for Median web
 
 ## REQUIRED: Run These Migrations Before Going Live
 
-Both SQL files in the project root **must be applied** in Supabase before the payment + membership features work. Code degrades gracefully without them, but features stay disabled.
+All SQL files in the project root **must be applied** in Supabase before their associated features work. Code degrades gracefully without them, but features stay disabled.
 
 1. `supabase-payment-migration.sql` — payment columns on `orders`. Required for the basic checkout / PayPal flow.
 2. `supabase-membership-coupon-migration.sql` — `user_memberships`, `coupons`, `coupon_redemptions` tables + membership/coupon snapshot columns on `orders`. Required for the membership tier system and coupon codes.
+3. `supabase-admin-migration.sql` — expands `orders.status` check constraint (adds `confirmed`, `ready_for_pickup`) and adds `orders` + `order_items` to the `supabase_realtime` publication. Required for the admin merchant panel.
 
 **Steps:**
 1. Open your Supabase project → SQL Editor → New Query
@@ -41,6 +42,27 @@ Both SQL files in the project root **must be applied** in Supabase before the pa
 - **Membership capture integrity**: server verifies captured PayPal amount + currency against the pending snapshot before activating.
 - **Coupons**: `POST /api/coupons/validate` (preview only, never trusts client) + final discount recomputed in `createServerOrder`. Order in pricing logic: member % off subtotal first, then coupon applied to discounted subtotal. `free_delivery` coupons zero the delivery fee.
 - **Auth boundary**: `server/auth.ts` reads `Authorization: Bearer <jwt>` and resolves the Supabase user. The frontend uses `web/src/lib/api.ts` (`authedFetch`) to attach this header. The server NEVER trusts a `user_id` field in request bodies — that prevented the original IDOR / tier-spoofing risk flagged in code review.
+
+## Admin Merchant Panel (`/admin`)
+
+- **URL**: `/admin` — full-width responsive dashboard (mobile, tablet, desktop). Bypasses customer splash + age gate. Bottom nav is hidden for admin routes.
+- **Authorization**: `server/auth.ts → requireAdmin(req)` checks the JWT `app_metadata.role === 'admin'`. ALL `/api/admin/*` routes are gated by this. `app_metadata` is service-role-only — users cannot promote themselves.
+  - Promote a user to admin (run once in Supabase SQL editor):
+    ```sql
+    update auth.users
+       set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"role":"admin"}'::jsonb
+     where email = 'admin@example.com';
+    ```
+- **Frontend guard**: `web/src/pages/admin/AdminGuard.tsx` — bounces unauthenticated users to `/auth/login`, shows access-denied for non-admin users, renders dashboard for admins. Real authorization is server-side; the guard only decides what UI to show.
+- **API endpoints** (all require admin JWT):
+  - `GET   /api/admin/me` — `{ isAdmin: bool }`
+  - `GET   /api/admin/orders?status=&fulfillment=&payment=&q=&date=&limit=&offset=` — paginated list + count
+  - `GET   /api/admin/orders/:id` — full order + items
+  - `PATCH /api/admin/orders/:id` — update `status` and/or `payment_status` (paid_at auto-stamped when marking paid)
+  - `GET   /api/admin/stats/today` — total orders, pending, completed, sales, paid sales
+- **Realtime**: dashboard subscribes to `postgres_changes` on `public.orders` via supabase-js; new orders trigger a refetch + golden chime + on-screen badge. Admin RLS (`admin manage orders`) gates realtime delivery server-side.
+- **Status mapping**: customer-tracking values stay (`received, packing, out_for_delivery, delivered, refused`); admin gets two new values (`confirmed`, `ready_for_pickup`) and presents friendly labels (New, Confirmed, Preparing, Out for Delivery, Ready for Pickup, Completed, Cancelled).
+- **Files**: `server/admin.ts`, `server/routes.ts` (admin block), `web/src/pages/admin/AdminDashboard.tsx`, `web/src/pages/admin/AdminGuard.tsx`, `supabase-admin-migration.sql`.
 
 ## Payment System
 

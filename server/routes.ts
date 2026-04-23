@@ -23,7 +23,16 @@ import {
   membershipTableExists,
 } from "./memberships";
 import { TIERS, isMembershipTier, type MembershipTier } from "./business";
-import { getAuthedUserId } from "./auth";
+import { getAuthedUserId, requireAdmin } from "./auth";
+import {
+  ADMIN_ORDER_STATUSES,
+  listOrders as adminListOrders,
+  getOrderDetail as adminGetOrderDetail,
+  updateOrderStatus as adminUpdateOrderStatus,
+  updatePaymentStatus as adminUpdatePaymentStatus,
+  todayStats as adminTodayStats,
+  type AdminOrderStatus,
+} from "./admin";
 
 // Compare two monetary amounts at cent precision.
 function amountsMatch(a: number, b: number): boolean {
@@ -531,6 +540,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: unknown) {
       console.error("[GET /api/orders/:id]", err);
       return res.status(500).json({ error: "Failed to load order." });
+    }
+  });
+
+  // ── Admin guard helper ─────────────────────────────────────────────────────
+  // All /api/admin/* routes use this so the role check (and the 401/403 reply
+  // shape) lives in exactly one place. requireAdmin() returns the user id when
+  // the caller's Supabase JWT carries app_metadata.role = 'admin', else null.
+  async function ensureAdmin(req: Request, res: Response): Promise<string | null> {
+    const adminId = await requireAdmin(req);
+    if (!adminId) {
+      res.status(403).json({ error: "Admin access required." });
+      return null;
+    }
+    return adminId;
+  }
+
+  // ── GET /api/admin/me — lightweight role probe for the frontend guard ────
+  app.get("/api/admin/me", async (req: Request, res: Response) => {
+    const adminId = await requireAdmin(req);
+    return res.json({ isAdmin: !!adminId });
+  });
+
+  // ── GET /api/admin/orders — paginated, filtered orders list ──────────────
+  app.get("/api/admin/orders", async (req: Request, res: Response) => {
+    if (!(await ensureAdmin(req, res))) return;
+    try {
+      const result = await adminListOrders({
+        status:      (req.query.status      as string | undefined) ?? null,
+        fulfillment: (req.query.fulfillment as string | undefined) ?? null,
+        payment:     (req.query.payment     as string | undefined) ?? null,
+        q:           (req.query.q           as string | undefined) ?? null,
+        date:        (req.query.date        as string | undefined) ?? null,
+        limit:       req.query.limit  ? Number(req.query.limit)  : undefined,
+        offset:      req.query.offset ? Number(req.query.offset) : undefined,
+      });
+      return res.json(result);
+    } catch (err: unknown) {
+      console.error("[GET /api/admin/orders]", err);
+      return res.status(500).json({ error: "Failed to load orders." });
+    }
+  });
+
+  // ── GET /api/admin/orders/:id — full order detail + items ────────────────
+  app.get("/api/admin/orders/:id", async (req: Request, res: Response) => {
+    if (!(await ensureAdmin(req, res))) return;
+    try {
+      const detail = await adminGetOrderDetail(req.params.id);
+      if (!detail) return res.status(404).json({ error: "Order not found." });
+      return res.json(detail);
+    } catch (err: unknown) {
+      console.error("[GET /api/admin/orders/:id]", err);
+      return res.status(500).json({ error: "Failed to load order." });
+    }
+  });
+
+  // ── PATCH /api/admin/orders/:id — update status and/or payment_status ────
+  app.patch("/api/admin/orders/:id", async (req: Request, res: Response) => {
+    if (!(await ensureAdmin(req, res))) return;
+    try {
+      const id = req.params.id;
+      if (!/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: "Invalid order id." });
+
+      const body = (req.body ?? {}) as { status?: string; payment_status?: string };
+      let order: unknown = null;
+
+      let didUpdate = false;
+      if (body.status !== undefined) {
+        if (!ADMIN_ORDER_STATUSES.includes(body.status as AdminOrderStatus)) {
+          return res.status(400).json({ error: "Invalid status." });
+        }
+        order = await adminUpdateOrderStatus(id, body.status as AdminOrderStatus);
+        didUpdate = true;
+      }
+      if (body.payment_status !== undefined) {
+        const allowed = ["pending", "paid", "failed", "cancelled", "refunded"];
+        if (!allowed.includes(body.payment_status)) {
+          return res.status(400).json({ error: "Invalid payment_status." });
+        }
+        order = await adminUpdatePaymentStatus(id, body.payment_status);
+        didUpdate = true;
+      }
+      if (!didUpdate) return res.status(400).json({ error: "Nothing to update." });
+      // maybeSingle() returns null (not an error) when the id doesn't exist.
+      // Surface that as a true 404 so the dashboard can react correctly
+      // instead of treating a no-op update as success.
+      if (order === null) return res.status(404).json({ error: "Order not found." });
+      return res.json({ ok: true, order });
+    } catch (err: unknown) {
+      console.error("[PATCH /api/admin/orders/:id]", err);
+      return res.status(500).json({ error: "Failed to update order." });
+    }
+  });
+
+  // ── GET /api/admin/stats/today — top-of-dashboard summary tiles ─────────
+  app.get("/api/admin/stats/today", async (req: Request, res: Response) => {
+    if (!(await ensureAdmin(req, res))) return;
+    try {
+      return res.json(await adminTodayStats());
+    } catch (err: unknown) {
+      console.error("[GET /api/admin/stats/today]", err);
+      return res.status(500).json({ error: "Failed to load stats." });
     }
   });
 

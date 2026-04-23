@@ -21,6 +21,10 @@ rootEl.style.cssText = `
 `;
 
 const appContainer = document.createElement("div");
+// Stable id so route-aware layout switches (e.g. the admin dashboard
+// resizing to full viewport) can target this element without depending
+// on the rendered DOM tree shape.
+appContainer.id = "app-shell";
 appContainer.style.cssText = `
   width: 100%;
   max-width: ${MAX_WIDTH}px;

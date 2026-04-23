@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAgeGate } from "@/context/AgeGateContext";
 import { useAuth } from "@/context/AuthContext";
@@ -26,6 +26,8 @@ import { Membership } from "@/pages/Membership";
 import { PaymentSuccess } from "@/pages/PaymentSuccess";
 import { PaymentFailed } from "@/pages/PaymentFailed";
 import { PaymentCancelled } from "@/pages/PaymentCancelled";
+import { AdminGuard } from "@/pages/admin/AdminGuard";
+import { AdminDashboard } from "@/pages/admin/AdminDashboard";
 
 /** Redirect that preserves the current search-params (query string). */
 function QueryRedirect({ to }: { to: string }) {
@@ -35,15 +37,45 @@ function QueryRedirect({ to }: { to: string }) {
 }
 
 const TAB_PATHS = ["/", "/search", "/cart", "/profile", "/orders"];
-const NO_NAV_PREFIXES = ["/checkout", "/product/", "/order-tracking/", "/auth/", "/payment", "/settings", "/contact-support", "/membership"];
+const NO_NAV_PREFIXES = ["/checkout", "/product/", "/order-tracking/", "/auth/", "/payment", "/settings", "/contact-support", "/membership", "/admin"];
 
 function AppInner() {
   const { verified } = useAgeGate();
   const { loading, user, isGuest, isRecoveryMode } = useAuth();
   const [splash, setSplash] = useState(true);
   const location = useLocation();
+  const isAdminRoute = location.pathname.startsWith("/admin");
   const isNoNavRoute = NO_NAV_PREFIXES.some((p) => location.pathname.startsWith(p));
   const showBottomNav = !isNoNavRoute && (TAB_PATHS.includes(location.pathname) || location.pathname.startsWith("/orders"));
+
+  // Admin pages need full viewport width; the customer app is capped at 480px
+  // by main.tsx. Toggle the parent container's max-width on route change so
+  // /admin/* gets the full screen on tablet/desktop without breaking the
+  // customer mobile-first layout.
+  useEffect(() => {
+    const container = document.getElementById("app-shell");
+    if (container) container.style.maxWidth = isAdminRoute ? "100%" : "480px";
+  }, [isAdminRoute]);
+
+  // Admin routes bypass the splash, age gate, and customer auth redirect —
+  // AdminGuard handles its own auth/role gating. This keeps the admin URL
+  // accessible directly and avoids forcing the merchant through the consumer
+  // age verification or splash on every visit.
+  if (isAdminRoute) {
+    if (loading) {
+      return (
+        <div className="fixed inset-0 flex items-center justify-center" style={{ background: "#0A0A0F" }}>
+          <div style={{ width: 32, height: 32, border: "2px solid rgba(228,161,43,0.2)", borderTopColor: "#E4A12B", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+        </div>
+      );
+    }
+    return (
+      <Routes>
+        <Route path="/admin" element={<AdminGuard><AdminDashboard /></AdminGuard>} />
+        <Route path="/admin/*" element={<Navigate to="/admin" replace />} />
+      </Routes>
+    );
+  }
 
   if (splash) return <SplashScreen onDone={() => setSplash(false)} />;
   if (!verified) return <AgeGate />;
