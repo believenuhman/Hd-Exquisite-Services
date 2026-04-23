@@ -1,16 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { IoChevronBack, IoCheckmarkCircle, IoAlertCircle, IoCard, IoCash, IoBicycle, IoStorefront, IoLocationSharp } from "react-icons/io5";
+import { IoChevronBack, IoCheckmarkCircle, IoAlertCircle, IoCard, IoCash, IoBicycle, IoStorefront, IoLocationSharp, IoTime } from "react-icons/io5";
 import { supabase, DeliveryZone } from "@/lib/supabase";
 import { useCart } from "@/context/CartContext";
 import { useAppSettings } from "@/context/AppSettingsContext";
 import { useAuth } from "@/context/AuthContext";
 import { storage } from "@/lib/storage";
+import { PICKUP_LOCATION, deliveryCutoffLabel, isDeliveryAvailableNow } from "@/lib/business";
 
 const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
-
-// Pickup location — change here to update everywhere.
-const PICKUP_LOCATION = "Barbershop, James Fort Building, Bridgetown";
 
 type PaymentMethod = "cash_on_delivery" | "online_card";
 type FulfillmentMethod = "delivery" | "pickup";
@@ -30,10 +28,22 @@ export function Checkout() {
   const [notes, setNotes]     = useState("");
   const [ageConfirm, setAgeConfirm]   = useState(false);
   const [idConfirm, setIdConfirm]     = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash_on_delivery");
   const [fulfillment, setFulfillment] = useState<FulfillmentMethod>(
     () => (storage.get("hd_saved_fulfillment") as FulfillmentMethod) ?? "delivery"
   );
+  // Pickup orders MUST be paid online — no Cash on Delivery for pickup.
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
+    () => (storage.get("hd_saved_fulfillment") === "pickup" ? "online_card" : "cash_on_delivery")
+  );
+
+  // Force online payment whenever Pickup is active.
+  useEffect(() => {
+    if (fulfillment === "pickup" && paymentMethod !== "online_card") {
+      setPaymentMethod("online_card");
+    }
+  }, [fulfillment, paymentMethod]);
+
+  const deliveryAvailable = fulfillment === "delivery" ? isDeliveryAvailableNow() : true;
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
   const submittingRef = useRef(false);
@@ -58,6 +68,12 @@ export function Checkout() {
     if (!name.trim())    return "Please enter your name.";
     if (!phone.trim())   return "Please enter your phone number.";
     if (fulfillment === "delivery" && !address.trim()) return "Please enter your delivery address.";
+    if (fulfillment === "delivery" && !deliveryAvailable) {
+      return `Delivery is closed for today (cutoff ${deliveryCutoffLabel()}). Please choose Pick Up or order again tomorrow.`;
+    }
+    if (fulfillment === "pickup" && paymentMethod !== "online_card") {
+      return "Pickup orders must be paid online.";
+    }
     if (!ageConfirm)     return "You must confirm you are 18+ years old.";
     if (!idConfirm)      return "You must confirm you have valid ID.";
     if (items.length === 0) return "Your cart is empty.";
@@ -224,7 +240,28 @@ export function Checkout() {
                 <p className="font-inter text-xs font-semibold" style={{ color: "#E4A12B" }}>Pickup Location</p>
                 <p className="font-inter text-sm text-white mt-0.5">{PICKUP_LOCATION}</p>
                 <p className="font-inter text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>
-                  We'll text you on the number below when your order is ready.
+                  Pickup orders must be paid online. We'll text you on the number below when your order is ready.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Delivery cutoff notice */}
+          {fulfillment === "delivery" && (
+            <div className="mt-3 flex items-start gap-2 p-3 rounded-xl"
+              style={{
+                background: deliveryAvailable ? "rgba(76,175,80,0.06)" : "rgba(220,53,69,0.08)",
+                border:     `1px solid ${deliveryAvailable ? "rgba(76,175,80,0.25)" : "rgba(220,53,69,0.3)"}`,
+              }}>
+              <IoTime size={16} color={deliveryAvailable ? "#4CAF50" : "#DC3545"} style={{ marginTop: 2, flexShrink: 0 }} />
+              <div>
+                <p className="font-inter text-xs font-semibold" style={{ color: deliveryAvailable ? "#4CAF50" : "#DC3545" }}>
+                  {deliveryAvailable ? `Delivery available until ${deliveryCutoffLabel()}` : `Delivery closed for today`}
+                </p>
+                <p className="font-inter text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
+                  {deliveryAvailable
+                    ? `Place your order before ${deliveryCutoffLabel()} to receive it tonight.`
+                    : `Please choose Pick Up to order now, or come back tomorrow for delivery.`}
                 </p>
               </div>
             </div>
@@ -324,10 +361,13 @@ export function Checkout() {
 
         {/* Payment Method */}
         <div className="rounded-2xl p-4" style={{ background: "linear-gradient(145deg, #1C1828, #121212)", border: "1px solid rgba(228,161,43,0.1)" }}>
-          <p className="font-inter font-semibold text-xs uppercase tracking-widest mb-3" style={{ color: "#E4A12B" }}>Payment Method</p>
+          <p className="font-inter font-semibold text-xs uppercase tracking-widest mb-3" style={{ color: "#E4A12B" }}>
+            Payment Method{fulfillment === "pickup" ? " · Online Only" : ""}
+          </p>
           <div className="flex flex-col gap-3">
 
-            {/* Cash on Delivery */}
+            {/* Cash on Delivery — hidden for pickup orders */}
+            {fulfillment === "delivery" && (
             <button onClick={() => setPaymentMethod("cash_on_delivery")}
               className="flex items-center gap-4 rounded-xl p-4 press-active text-left"
               style={{ background: paymentMethod === "cash_on_delivery" ? "rgba(228,161,43,0.08)" : "rgba(255,255,255,0.03)", border: `1.5px solid ${paymentMethod === "cash_on_delivery" ? "rgba(228,161,43,0.5)" : "rgba(255,255,255,0.08)"}`, transition: "all 0.2s" }}>
@@ -344,6 +384,7 @@ export function Checkout() {
                 {paymentMethod === "cash_on_delivery" && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#09090C" }} />}
               </div>
             </button>
+            )}
 
             {/* Pay Online — PayPal */}
             <button onClick={() => setPaymentMethod("online_card")}

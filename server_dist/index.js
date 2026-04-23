@@ -362,12 +362,15 @@ async function registerRoutes(app2) {
   app2.post("/api/orders/create", async (req, res) => {
     try {
       const body = req.body;
-      const method = body.payment_method === "online_card" ? "online_card" : "cash_on_delivery";
       const fulfillment = body.fulfillment_method === "pickup" ? "pickup" : "delivery";
+      const method = fulfillment === "pickup" ? "online_card" : body.payment_method === "online_card" ? "online_card" : "cash_on_delivery";
       if (!body.customer_name?.trim()) return res.status(400).json({ error: "Name is required." });
       if (!body.customer_phone?.trim()) return res.status(400).json({ error: "Phone is required." });
       if (fulfillment === "delivery" && !body.delivery_address?.trim()) {
         return res.status(400).json({ error: "Delivery address is required." });
+      }
+      if (fulfillment === "pickup" && body.payment_method === "cash_on_delivery") {
+        return res.status(400).json({ error: "Pickup orders must be paid online." });
       }
       if (!Array.isArray(body.items) || body.items.length === 0) {
         return res.status(400).json({ error: "Cart is empty." });

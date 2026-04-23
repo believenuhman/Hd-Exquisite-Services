@@ -294,7 +294,7 @@ export function OrderTracking() {
             { label: "Name",    value: order.customer_name,    show: true },
             { label: "Phone",   value: order.customer_phone,   show: true },
             { label: "Address", value: order.delivery_address ?? "", show: order.fulfillment_method !== "pickup" && !!order.delivery_address },
-            { label: "Pickup",  value: order.pickup_location ?? "Barbershop, James Fort Building, Bridgetown", show: order.fulfillment_method === "pickup" },
+            { label: "Pickup",  value: order.pickup_location ?? "Barbershop, James Fort Building, Bridgetown", show: order.fulfillment_method === "pickup" }, // fallback only — new orders always include pickup_location from web/src/lib/business.ts
             { label: "Notes",   value: order.delivery_notes ?? "", show: !!order.delivery_notes },
           ]).filter((r) => r.show).map(({ label, value }) => (
             <div key={label} className="flex justify-between py-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
