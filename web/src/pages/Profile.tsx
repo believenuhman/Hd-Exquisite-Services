@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { IoPerson, IoCreate, IoLogOut, IoLogIn, IoHome, IoCart, IoReceipt, IoClose, IoCheckmarkCircle, IoSettings, IoHelpCircle } from "react-icons/io5";
+import { IoPerson, IoCreate, IoLogOut, IoLogIn, IoHome, IoCart, IoReceipt, IoClose, IoCheckmarkCircle, IoSettings, IoHelpCircle, IoSparkles } from "react-icons/io5";
 import { useAuth } from "@/context/AuthContext";
+import { useMembership } from "@/context/MembershipContext";
+import { TIERS, deliveryCutoffLabelForTier } from "@/lib/business";
 import { storage } from "@/lib/storage";
 
 const ADDRESS_KEY = "hd_profile_address";
@@ -9,7 +11,10 @@ const ADDRESS_KEY = "hd_profile_address";
 export function Profile() {
   const navigate = useNavigate();
   const { user, isGuest, signOut } = useAuth();
+  const { tier, membership } = useMembership();
   const isSignedIn = !!user;
+  const tierCfg = TIERS[tier];
+  const expires = membership?.expires_at ? new Date(membership.expires_at) : null;
 
   const [editMode, setEditMode] = useState(false);
   const [address, setAddress] = useState(() => storage.get(ADDRESS_KEY) ?? "");
@@ -59,12 +64,34 @@ export function Profile() {
           </div>
           <p className="font-playfair text-white font-bold text-xl mb-1">{name || "HD Member"}</p>
           {email ? <p className="font-inter text-sm mb-2" style={{ color: "rgba(255,255,255,0.45)" }}>{email}</p> : null}
-          <div className="px-3 py-1 rounded-full" style={{ background: isSignedIn ? "rgba(228,161,43,0.1)" : "rgba(255,255,255,0.06)", border: `1px solid ${isSignedIn ? "rgba(228,161,43,0.25)" : "rgba(255,255,255,0.12)"}` }}>
-            <span className="font-inter text-xs font-semibold" style={{ color: isSignedIn ? "#E4A12B" : "rgba(255,255,255,0.4)" }}>
-              {isSignedIn ? "✦ Premium Member" : "Guest"}
+          <div className="px-3 py-1 rounded-full" style={{ background: isSignedIn ? tierCfg.accent + "1F" : "rgba(255,255,255,0.06)", border: `1px solid ${isSignedIn ? tierCfg.accent + "55" : "rgba(255,255,255,0.12)"}` }}>
+            <span className="font-inter text-xs font-semibold" style={{ color: isSignedIn ? tierCfg.accent : "rgba(255,255,255,0.4)" }}>
+              {isSignedIn ? `✦ ${tierCfg.label} Member` : "Guest"}
             </span>
           </div>
         </div>
+
+        {/* Membership card */}
+        {isSignedIn && (
+          <button onClick={() => navigate("/membership")}
+            className="rounded-2xl p-4 text-left press-active flex items-center gap-3"
+            style={{ background: `linear-gradient(135deg, ${tierCfg.accent}1A, rgba(28,24,40,0.6))`, border: `1px solid ${tierCfg.accent}40` }}>
+            <div className="flex items-center justify-center rounded-full flex-shrink-0"
+              style={{ width: 44, height: 44, background: tierCfg.accent + "26", border: `1px solid ${tierCfg.accent}66` }}>
+              <IoSparkles size={20} color={tierCfg.accent} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-inter text-[10px] uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.45)" }}>Membership</p>
+              <p className="font-playfair text-white font-bold text-base leading-tight">{tierCfg.label}</p>
+              <p className="font-inter text-[11px]" style={{ color: "rgba(255,255,255,0.5)" }}>
+                {tier === "standard"
+                  ? `Upgrade for later cutoff & member-only deals`
+                  : `Delivery until ${deliveryCutoffLabelForTier(tier)}${expires ? ` · Renews ${expires.toLocaleDateString()}` : ""}`}
+              </p>
+            </div>
+            <span style={{ color: tierCfg.accent, fontSize: 18 }}>›</span>
+          </button>
+        )}
 
         {/* Guest CTA */}
         {!isSignedIn && (
@@ -142,6 +169,7 @@ export function Profile() {
             { icon: <IoHome size={18} color="#E4A12B" />, label: "Browse Products", action: () => navigate("/") },
             { icon: <IoCart size={18} color="#E4A12B" />, label: "My Cart", action: () => navigate("/cart") },
             { icon: <IoReceipt size={18} color="#E4A12B" />, label: "My Orders", action: () => navigate("/orders") },
+            { icon: <IoSparkles size={18} color={tierCfg.accent} />, label: "Membership & Perks", action: () => navigate("/membership") },
             { icon: <IoSettings size={18} color="rgba(255,255,255,0.5)" />, label: "Settings", action: () => navigate("/settings") },
             { icon: <IoHelpCircle size={18} color="rgba(255,255,255,0.5)" />, label: "Contact Support", action: () => navigate("/contact-support") },
           ].map(({ icon, label, action }, i, arr) => (

@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { IoChevronBack, IoCheckmarkCircle, IoAlertCircle, IoCard, IoCash, IoBicycle, IoStorefront, IoLocationSharp, IoTime } from "react-icons/io5";
+import { IoChevronBack, IoCheckmarkCircle, IoAlertCircle, IoCard, IoCash, IoBicycle, IoStorefront, IoLocationSharp, IoTime, IoPricetag, IoClose, IoSparkles } from "react-icons/io5";
 import { supabase, DeliveryZone } from "@/lib/supabase";
 import { useCart } from "@/context/CartContext";
 import { useAppSettings } from "@/context/AppSettingsContext";
 import { useAuth } from "@/context/AuthContext";
+import { useMembership } from "@/context/MembershipContext";
+import { authedFetch } from "@/lib/api";
 import { storage } from "@/lib/storage";
-import { PICKUP_LOCATION, deliveryCutoffLabel, isDeliveryAvailableNow } from "@/lib/business";
+import { PICKUP_LOCATION, TIERS, deliveryCutoffLabelForTier, isDeliveryAvailableForTier } from "@/lib/business";
 
 const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
 
@@ -19,6 +21,8 @@ export function Checkout() {
   const { items, subtotal, clearCart } = useCart();
   const { settings } = useAppSettings();
   const { user }  = useAuth();
+  const { tier } = useMembership();
+  const tierCfg = TIERS[tier];
 
   const [zones, setZones]               = useState<DeliveryZone[]>([]);
   const [selectedZone, setSelectedZone] = useState<DeliveryZone | null>(null);
@@ -43,7 +47,19 @@ export function Checkout() {
     }
   }, [fulfillment, paymentMethod]);
 
-  const deliveryAvailable = fulfillment === "delivery" ? isDeliveryAvailableNow() : true;
+  const deliveryAvailable = fulfillment === "delivery" ? isDeliveryAvailableForTier(tier) : true;
+
+  // Coupon state — discount values come from the SERVER, never the client.
+  const [couponInput, setCouponInput] = useState("");
+  const [couponBusy, setCouponBusy] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    description: string | null;
+    discount_type: "percent" | "fixed" | "free_delivery";
+    coupon_discount: number;
+    free_delivery: boolean;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
   const submittingRef = useRef(false);
@@ -57,19 +73,71 @@ export function Checkout() {
       .catch(() => {});
   }, []);
 
-  const deliveryFee  = fulfillment === "pickup"
+  const baseDeliveryFee = fulfillment === "pickup"
     ? 0
     : (selectedZone?.fee ?? (settings?.flat_fee ?? 0));
-  const total        = subtotal + deliveryFee;
   const sym          = settings?.currency_symbol ?? "$";
   const currencyCode = settings?.currency_code ?? "USD";
+
+  // Member discount preview (recomputed authoritatively on the server).
+  const membershipDiscount = Math.round((subtotal * tierCfg.memberDiscountPct / 100) * 100) / 100;
+
+  const couponFreeDelivery = appliedCoupon?.free_delivery ?? false;
+  const couponDiscount     = appliedCoupon && !appliedCoupon.free_delivery ? Number(appliedCoupon.coupon_discount ?? 0) : 0;
+  const deliveryFee        = couponFreeDelivery ? 0 : baseDeliveryFee;
+  const totalDiscount      = Math.round((membershipDiscount + couponDiscount) * 100) / 100;
+  const total              = Math.max(0, Math.round((subtotal - totalDiscount + deliveryFee) * 100) / 100);
+
+  // If subtotal or tier or fulfillment changes after a coupon was applied, drop the coupon
+  // so the user re-applies it against the new context (prevents stale totals).
+  useEffect(() => {
+    if (appliedCoupon) {
+      setAppliedCoupon(null);
+      setCouponInput((c) => c || appliedCoupon.code);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subtotal, tier, fulfillment]);
+
+  const applyCoupon = async () => {
+    const code = couponInput.trim().toUpperCase();
+    if (!code) { setCouponError("Enter a coupon code."); return; }
+    setCouponError(null);
+    setCouponBusy(true);
+    try {
+      const r = await authedFetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code,
+          subtotal,
+          delivery_fee:   baseDeliveryFee,
+          customer_phone: phone.trim(),
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error ?? "Invalid coupon.");
+      setAppliedCoupon({
+        code:            data.code,
+        description:     data.description ?? null,
+        discount_type:   data.discount_type,
+        coupon_discount: Number(data.coupon_discount ?? 0),
+        free_delivery:   Boolean(data.free_delivery),
+      });
+    } catch (err: unknown) {
+      setAppliedCoupon(null);
+      setCouponError(err instanceof Error ? err.message : "Invalid coupon.");
+    } finally {
+      setCouponBusy(false);
+    }
+  };
+  const removeCoupon = () => { setAppliedCoupon(null); setCouponError(null); setCouponInput(""); };
 
   const validate = (): string | null => {
     if (!name.trim())    return "Please enter your name.";
     if (!phone.trim())   return "Please enter your phone number.";
     if (fulfillment === "delivery" && !address.trim()) return "Please enter your delivery address.";
     if (fulfillment === "delivery" && !deliveryAvailable) {
-      return `Delivery is closed for today (cutoff ${deliveryCutoffLabel()}). Please choose Pick Up or order again tomorrow.`;
+      return `Delivery is closed for today (your cutoff: ${deliveryCutoffLabelForTier(tier)}). Please choose Pick Up or order again tomorrow.`;
     }
     if (fulfillment === "pickup" && paymentMethod !== "online_card") {
       return "Pickup orders must be paid online.";
@@ -84,7 +152,7 @@ export function Checkout() {
   // the database — totals here are only for UI display and are NEVER trusted
   // by the backend.
   const createOrder = async (method: PaymentMethod): Promise<{ orderId: string; total: number; currencyCode: string }> => {
-    const apiRes = await fetch("/api/orders/create", {
+    const apiRes = await authedFetch("/api/orders/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -97,6 +165,7 @@ export function Checkout() {
         payment_method:     method,
         fulfillment_method: fulfillment,
         pickup_location:    fulfillment === "pickup" ? PICKUP_LOCATION : null,
+        coupon_code:        appliedCoupon?.code ?? null,
       }),
     });
     if (!apiRes.ok) {
@@ -256,11 +325,11 @@ export function Checkout() {
               <IoTime size={16} color={deliveryAvailable ? "#4CAF50" : "#DC3545"} style={{ marginTop: 2, flexShrink: 0 }} />
               <div>
                 <p className="font-inter text-xs font-semibold" style={{ color: deliveryAvailable ? "#4CAF50" : "#DC3545" }}>
-                  {deliveryAvailable ? `Delivery available until ${deliveryCutoffLabel()}` : `Delivery closed for today`}
+                  {deliveryAvailable ? `Delivery available until ${deliveryCutoffLabelForTier(tier)} (${tierCfg.label})` : `Delivery closed for today`}
                 </p>
                 <p className="font-inter text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
                   {deliveryAvailable
-                    ? `Place your order before ${deliveryCutoffLabel()} to receive it tonight.`
+                    ? `Place your order before ${deliveryCutoffLabelForTier(tier)} to receive it tonight.`
                     : `Please choose Pick Up to order now, or come back tomorrow for delivery.`}
                 </p>
               </div>
@@ -339,10 +408,78 @@ export function Checkout() {
                   : "Select zone"}
             </span>
           </div>
+          {membershipDiscount > 0 && (
+            <div className="flex justify-between mb-2">
+              <span className="font-inter text-sm flex items-center gap-1" style={{ color: tierCfg.accent }}>
+                <IoSparkles size={13} /> {tierCfg.label} member ({tierCfg.memberDiscountPct}% off)
+              </span>
+              <span className="font-inter text-sm font-semibold" style={{ color: tierCfg.accent }}>−{sym}{membershipDiscount.toFixed(2)}</span>
+            </div>
+          )}
+          {appliedCoupon && (
+            <div className="flex justify-between mb-2">
+              <span className="font-inter text-sm flex items-center gap-1" style={{ color: "#4CAF50" }}>
+                <IoPricetag size={13} /> {appliedCoupon.code}
+                {appliedCoupon.free_delivery && <span className="text-[10px] opacity-80"> (free delivery)</span>}
+              </span>
+              <span className="font-inter text-sm font-semibold" style={{ color: "#4CAF50" }}>
+                {appliedCoupon.free_delivery ? `−${sym}${baseDeliveryFee.toFixed(2)}` : `−${sym}${couponDiscount.toFixed(2)}`}
+              </span>
+            </div>
+          )}
           <div className="flex justify-between mt-3 pt-3" style={{ borderTop: "1px solid rgba(228,161,43,0.1)" }}>
             <span className="font-inter font-bold text-white">Total</span>
             <span className="font-inter font-bold text-xl" style={{ color: "#E4A12B" }}>{sym}{total.toFixed(2)}</span>
           </div>
+        </div>
+
+        {/* Coupon */}
+        <div className="rounded-2xl p-4" style={{ background: "linear-gradient(145deg, #1C1828, #121212)", border: "1px solid rgba(228,161,43,0.1)" }}>
+          <p className="font-inter font-semibold text-xs uppercase tracking-widest mb-3 flex items-center gap-2" style={{ color: "#E4A12B" }}>
+            <IoPricetag size={12} /> Promo / Coupon
+          </p>
+          {appliedCoupon ? (
+            <div className="flex items-center justify-between p-3 rounded-xl"
+              style={{ background: "rgba(76,175,80,0.08)", border: "1px solid rgba(76,175,80,0.3)" }}>
+              <div className="flex flex-col min-w-0">
+                <span className="font-inter font-bold text-sm" style={{ color: "#4CAF50" }}>{appliedCoupon.code} applied</span>
+                {appliedCoupon.description && (
+                  <span className="font-inter text-[11px] truncate" style={{ color: "rgba(255,255,255,0.55)" }}>{appliedCoupon.description}</span>
+                )}
+              </div>
+              <button onClick={removeCoupon} type="button"
+                className="flex items-center justify-center rounded-full press-active flex-shrink-0 ml-2"
+                style={{ width: 28, height: 28, background: "rgba(255,255,255,0.06)" }}>
+                <IoClose size={14} color="rgba(255,255,255,0.7)" />
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex gap-2">
+                <input
+                  value={couponInput}
+                  onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponError(null); }}
+                  placeholder="Enter code"
+                  className="flex-1 px-3 py-2.5 rounded-xl font-inter text-sm tracking-wide"
+                  style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(228,161,43,0.15)", color: "#fff", outline: "none" }}
+                />
+                <button onClick={applyCoupon} type="button" disabled={couponBusy || !couponInput.trim()}
+                  className="px-4 rounded-xl font-inter font-bold text-sm press-active"
+                  style={{
+                    background: couponBusy || !couponInput.trim() ? "rgba(255,255,255,0.06)" : "linear-gradient(135deg, #E4A12B, #C88A1F)",
+                    color: couponBusy || !couponInput.trim() ? "rgba(255,255,255,0.4)" : "#09090C",
+                    cursor: couponBusy || !couponInput.trim() ? "default" : "pointer",
+                  }}>
+                  {couponBusy ? "…" : "Apply"}
+                </button>
+              </div>
+              {couponError && (
+                <p className="font-inter text-[11px] mt-2 flex items-center gap-1" style={{ color: "#DC3545" }}>
+                  <IoAlertCircle size={12} /> {couponError}
+                </p>
+              )}
+            </>
+          )}
         </div>
 
         {/* Age / ID confirmations */}

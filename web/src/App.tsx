@@ -22,6 +22,7 @@ import { ProductDetail } from "@/pages/ProductDetail";
 import { OrderTracking } from "@/pages/OrderTracking";
 import { Settings } from "@/pages/Settings";
 import { ContactSupport } from "@/pages/ContactSupport";
+import { Membership } from "@/pages/Membership";
 import { PaymentSuccess } from "@/pages/PaymentSuccess";
 import { PaymentFailed } from "@/pages/PaymentFailed";
 import { PaymentCancelled } from "@/pages/PaymentCancelled";
@@ -34,7 +35,7 @@ function QueryRedirect({ to }: { to: string }) {
 }
 
 const TAB_PATHS = ["/", "/search", "/cart", "/profile", "/orders"];
-const NO_NAV_PREFIXES = ["/checkout", "/product/", "/order-tracking/", "/auth/", "/payment", "/settings", "/contact-support"];
+const NO_NAV_PREFIXES = ["/checkout", "/product/", "/order-tracking/", "/auth/", "/payment", "/settings", "/contact-support", "/membership"];
 
 function AppInner() {
   const { verified } = useAgeGate();
@@ -86,6 +87,7 @@ function AppInner() {
         <Route path="/order-tracking/:id" element={<OrderTracking />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/contact-support" element={<ContactSupport />} />
+        <Route path="/membership" element={<Membership />} />
 
         {/* Payment result screens — PayPal redirects here after approval/cancel */}
         <Route path="/payment-success" element={<PaymentSuccess />} />

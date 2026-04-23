@@ -13,6 +13,17 @@ import {
   bindPayPalOrderId,
   getSupabaseAdmin,
 } from "./payment";
+import { resolveCoupon, CouponError, couponsTableExists } from "./coupons";
+import {
+  getEffectiveTier,
+  getMembershipByUser,
+  getMembershipByPayPalId,
+  upsertPendingMembership,
+  activateMembership,
+  membershipTableExists,
+} from "./memberships";
+import { TIERS, isMembershipTier, type MembershipTier } from "./business";
+import { getAuthedUserId } from "./auth";
 
 // Compare two monetary amounts at cent precision.
 function amountsMatch(a: number, b: number): boolean {
@@ -52,6 +63,123 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // ── GET /api/memberships/me ───────────────────────────────────────────────
+  // Returns the effective tier + raw membership row for the AUTHENTICATED user.
+  // Identity is derived from the Supabase JWT in `Authorization: Bearer …` —
+  // we never trust a user id supplied by the client.
+  app.get("/api/memberships/me", async (req: Request, res: Response) => {
+    try {
+      const userId = await getAuthedUserId(req);
+      if (!userId) return res.json({ tier: "standard", membership: null });
+      const [tier, membership] = await Promise.all([
+        getEffectiveTier(userId),
+        getMembershipByUser(userId),
+      ]);
+      return res.json({ tier, membership });
+    } catch (err: unknown) {
+      console.error("[GET /api/memberships/me]", err);
+      return res.json({ tier: "standard", membership: null });
+    }
+  });
+
+  // ── POST /api/memberships/subscribe ───────────────────────────────────────
+  // Creates a pending membership and a PayPal order to charge the monthly fee.
+  // On capture (handled in /api/paypal/capture-order), the membership activates.
+  app.post("/api/memberships/subscribe", async (req: Request, res: Response) => {
+    try {
+      const userId = await getAuthedUserId(req);
+      if (!userId) return res.status(401).json({ error: "Sign in required to subscribe." });
+      const { tier, origin } = req.body as { tier?: string; origin?: string };
+      if (!tier || !origin) return res.status(400).json({ error: "Missing tier or origin." });
+      if (!isMembershipTier(tier) || tier === "standard") return res.status(400).json({ error: "Invalid tier." });
+      if (!isPayPalConfigured()) return res.status(503).json({ error: "PayPal is not configured." });
+      if (!(await membershipTableExists())) return res.status(503).json({ error: "Membership system not enabled. Apply supabase-membership-coupon-migration.sql first." });
+
+      const cfg = TIERS[tier as MembershipTier];
+
+      // Currency from settings table.
+      const supabase = getSupabaseAdmin();
+      const { data: s } = await supabase.from("settings").select("currency_code").limit(1).maybeSingle();
+      const currency = (s as { currency_code?: string } | null)?.currency_code ?? "USD";
+
+      // Synthetic order id for PayPal reference. Stored in user_memberships.pending_paypal_order_id later.
+      const ref = `mem-${userId.slice(0, 8)}-${Date.now()}`;
+      const result = await createPayPalOrder({
+        orderId:     ref,
+        amount:      cfg.monthlyPrice,
+        currency,
+        description: `HD Xquisite ${cfg.label} Membership — 30 days`,
+        returnUrl:   `${origin}/payment-success`,
+        cancelUrl:   `${origin}/payment-cancelled`,
+      });
+      await upsertPendingMembership({
+        userId,
+        tier:          tier as MembershipTier,
+        paypalOrderId: result.paypalOrderId,
+        amount:        cfg.monthlyPrice,
+        currencyCode:  currency,
+      });
+      return res.json({ paypalOrderId: result.paypalOrderId, approvalUrl: result.approvalUrl, kind: "membership" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to start membership.";
+      console.error("[POST /api/memberships/subscribe]", err);
+      return res.status(500).json({ error: message });
+    }
+  });
+
+  // ── POST /api/coupons/validate ────────────────────────────────────────────
+  // Lets the checkout page show an authoritative discount preview before placing
+  // the order. Final discount is recomputed at order creation — never trust the
+  // client to carry a discount value across requests.
+  app.post("/api/coupons/validate", async (req: Request, res: Response) => {
+    try {
+      const { code, subtotal, delivery_fee, customer_phone } = req.body as {
+        code?: string;
+        subtotal?: number;
+        delivery_fee?: number;
+        customer_phone?: string;
+      };
+      if (!code || typeof subtotal !== "number") {
+        return res.status(400).json({ error: "Missing code or subtotal." });
+      }
+      if (!(await couponsTableExists())) {
+        return res.status(503).json({ error: "Coupon system not enabled. Apply supabase-membership-coupon-migration.sql first." });
+      }
+
+      // Identity from JWT only — never the request body.
+      const authedUserId = await getAuthedUserId(req);
+      // Determine member tier so member discount is reflected in preview.
+      const tier   = await getEffectiveTier(authedUserId);
+      const cfg    = (await import("./business.js")).tierConfig(tier);
+      const memberDiscount = Math.round((subtotal * cfg.memberDiscountPct / 100) * 100) / 100;
+
+      const result = await resolveCoupon({
+        code,
+        subtotal:      Math.max(0, subtotal - memberDiscount),
+        deliveryFee:   Number(delivery_fee ?? 0),
+        customerTier:  tier,
+        userId:        authedUserId,
+        customerPhone: String(customer_phone ?? ""),
+      });
+
+      return res.json({
+        ok:                true,
+        code:              result.coupon.code,
+        description:       result.coupon.description,
+        discount_type:     result.coupon.discount_type,
+        discount_value:    result.coupon.discount_value,
+        coupon_discount:   result.freeDelivery ? 0 : result.discountAmount,
+        free_delivery:     result.freeDelivery,
+        membership_tier:   tier,
+        membership_discount: memberDiscount,
+      });
+    } catch (err: unknown) {
+      if (err instanceof CouponError) return res.status(err.status).json({ error: err.message });
+      console.error("[POST /api/coupons/validate]", err);
+      return res.status(500).json({ error: "Failed to validate coupon." });
+    }
+  });
+
   // ── POST /api/orders/create ───────────────────────────────────────────────
   // Authoritative order creation. Frontend sends ONLY product IDs + quantities.
   // Server reads prices from the database. Client-supplied totals are ignored.
@@ -67,7 +195,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         payment_method?: string;
         fulfillment_method?: string;
         pickup_location?: string | null;
+        coupon_code?: string | null;
       };
+
+      // Identity is derived from the verified Supabase JWT — clients can no
+      // longer spoof a `user_id` to impersonate another customer's tier or
+      // claim per-user coupon redemptions on their behalf. Guests stay null.
+      const authedUserId = await getAuthedUserId(req);
 
       const fulfillment = body.fulfillment_method === "pickup" ? "pickup" : "delivery";
       // Pickup orders MUST be paid online (PayPal). Cash on Delivery is delivery-only.
@@ -100,6 +234,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         payment_method:     method,
         fulfillment_method: fulfillment,
         pickup_location:    body.pickup_location ?? null,
+        user_id:            authedUserId,
+        coupon_code:        body.coupon_code ?? null,
       });
 
       return res.json(result);
@@ -176,7 +312,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(503).json({ error: "PayPal is not configured." });
       }
 
-      // Look up the local order this PayPal token is bound to
+      // First, check if this PayPal token is bound to a MEMBERSHIP rather than a product order.
+      const pendingMembership = await getMembershipByPayPalId(paypalOrderId);
+      if (pendingMembership) {
+        if (pendingMembership.status === "active") {
+          return res.json({ success: true, kind: "membership", tier: pendingMembership.tier, status: "ALREADY_ACTIVE" });
+        }
+        const result = await capturePayPalOrder(paypalOrderId);
+        if (!result.success) return res.status(402).json({ success: false, status: result.status, error: "Membership payment was not completed." });
+        const activated = await activateMembership({
+          paypalOrderId,
+          reference:        result.captureId,
+          capturedAmount:   result.amount,
+          capturedCurrency: result.currency,
+        });
+        return res.json({
+          success: true,
+          kind:    "membership",
+          tier:    activated.tier,
+          status:  result.status,
+          captureId: result.captureId,
+          expires_at: activated.expires_at,
+        });
+      }
+
+      // Otherwise, treat as a product order.
       const order = await getOrderByPayPalId(paypalOrderId);
       if (!order) {
         return res.status(404).json({ error: "No matching order found for this PayPal payment." });

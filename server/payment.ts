@@ -313,14 +313,21 @@ export type CreateOrderInput = {
   payment_method:      "cash_on_delivery" | "online_card";
   fulfillment_method?: "delivery" | "pickup";
   pickup_location?:    string | null;
+  user_id?:            string | null;   // signed-in user id (for membership lookup + redemption attribution)
+  coupon_code?:        string | null;   // raw client input; resolved + validated server-side
 };
 
 export type CreateOrderResult = {
-  orderId:       string;
-  subtotal:      number;
-  deliveryFee:   number;
-  total:         number;
-  currencyCode:  string;
+  orderId:             string;
+  subtotal:            number;
+  deliveryFee:         number;
+  total:               number;
+  currencyCode:        string;
+  membershipTier:      "standard" | "gold" | "platinum";
+  membershipDiscount:  number;
+  couponCode:          string | null;
+  couponDiscount:      number;
+  totalDiscount:       number;
 };
 
 // Detect whether the fulfillment_method / pickup_location columns exist.
@@ -428,7 +435,50 @@ export async function createServerOrder(input: CreateOrderInput): Promise<Create
   const currencyCode   = (settingsRow as { currency_code?: string } | null)?.currency_code ?? "USD";
   const currencySymbol = (settingsRow as { currency_symbol?: string } | null)?.currency_symbol ?? "$";
 
-  const total = Math.round((subtotal + deliveryFee) * 100) / 100;
+  // 5a. Membership tier (authoritative, from DB) → member discount %
+  const { getEffectiveTier }    = await import("./memberships.js");
+  const { resolveCoupon, recordCouponRedemption } = await import("./coupons.js");
+  const { tierConfig, isDeliveryAvailableForTier, deliveryCutoffLabelForTier } = await import("./business.js");
+
+  const membershipTier = await getEffectiveTier(input.user_id ?? null);
+  const tierCfg        = tierConfig(membershipTier);
+
+  // Cutoff enforcement (server is source of truth)
+  if (fulfillmentMethod === "delivery" && !isDeliveryAvailableForTier(membershipTier)) {
+    throw new Error(
+      `Delivery is closed for today (${tierCfg.label} cutoff is ${deliveryCutoffLabelForTier(membershipTier)}). ` +
+      `Please choose Pick Up or order again tomorrow.`,
+    );
+  }
+
+  // 5b. Member discount (% off subtotal). Applied first.
+  const membershipDiscount = Math.round((subtotal * tierCfg.memberDiscountPct / 100) * 100) / 100;
+
+  // 5c. Coupon — resolved server-side. May reduce subtotal further or zero the delivery fee.
+  let couponDiscount = 0;
+  let couponCode: string | null = null;
+  let resolvedCoupon: Awaited<ReturnType<typeof resolveCoupon>> | null = null;
+
+  if (input.coupon_code && input.coupon_code.trim()) {
+    resolvedCoupon = await resolveCoupon({
+      code:          input.coupon_code,
+      subtotal:      Math.max(0, subtotal - membershipDiscount), // coupon applies to discounted subtotal
+      deliveryFee,
+      customerTier:  membershipTier,
+      userId:        input.user_id ?? null,
+      customerPhone: String(input.customer_phone ?? "").trim(),
+    });
+    couponCode = resolvedCoupon.coupon.code;
+    if (resolvedCoupon.freeDelivery) {
+      deliveryFee = 0;
+    } else {
+      couponDiscount = Math.round(resolvedCoupon.discountAmount * 100) / 100;
+    }
+  }
+
+  const totalDiscount = Math.round((membershipDiscount + couponDiscount) * 100) / 100;
+  const subtotalAfter = Math.max(0, Math.round((subtotal - totalDiscount) * 100) / 100);
+  const total         = Math.round((subtotalAfter + deliveryFee) * 100) / 100;
 
   // 6. Insert order (only include fulfillment columns if the migration was applied)
   const trimmedAddress = String(input.delivery_address ?? "").trim();
@@ -453,6 +503,16 @@ export async function createServerOrder(input: CreateOrderInput): Promise<Create
     orderRow.fulfillment_method = fulfillmentMethod;
     orderRow.pickup_location    = fulfillmentMethod === "pickup" ? (input.pickup_location ?? null) : null;
   }
+  // Snapshot membership + coupon onto the order if those columns exist (migration applied).
+  const hasMembershipCols = await orderMembershipColumnsExist();
+  if (hasMembershipCols) {
+    orderRow.user_id              = input.user_id ?? null;
+    orderRow.membership_tier      = membershipTier;
+    orderRow.membership_discount  = membershipDiscount;
+    orderRow.coupon_code          = couponCode;
+    orderRow.coupon_discount      = couponDiscount;
+    orderRow.total_discount       = totalDiscount;
+  }
   const insertRes = await supabase.from("orders").insert(orderRow).select().single();
 
   if (insertRes.error) throw new Error("Failed to create order: " + insertRes.error.message);
@@ -476,5 +536,44 @@ export async function createServerOrder(input: CreateOrderInput): Promise<Create
     throw new Error("Failed to create order items: " + itemsRes.error.message);
   }
 
-  return { orderId: order.id, subtotal, deliveryFee, total, currencyCode };
+  // 8. Record coupon redemption (best-effort; logged on failure)
+  if (resolvedCoupon) {
+    try {
+      await recordCouponRedemption({
+        coupon:         resolvedCoupon.coupon,
+        orderId:        order.id,
+        userId:         input.user_id ?? null,
+        customerPhone:  String(input.customer_phone ?? "").trim(),
+        discountAmount: resolvedCoupon.freeDelivery ? 0 : couponDiscount,
+      });
+    } catch (e) {
+      console.error("[order] coupon redemption record failed (non-fatal):", e);
+    }
+  }
+
+  return {
+    orderId:            order.id,
+    subtotal,
+    deliveryFee,
+    total,
+    currencyCode,
+    membershipTier,
+    membershipDiscount,
+    couponCode,
+    couponDiscount,
+    totalDiscount,
+  };
+}
+
+// Detect whether the membership/coupon snapshot columns on `orders` exist.
+let orderMembershipColumnsExistCache: boolean | null = null;
+export async function orderMembershipColumnsExist(): Promise<boolean> {
+  if (orderMembershipColumnsExistCache !== null) return orderMembershipColumnsExistCache;
+  try {
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase.from("orders").select("membership_tier").limit(1);
+    orderMembershipColumnsExistCache = !error;
+    if (error) console.warn("[payment] orders.membership_tier missing — apply supabase-membership-coupon-migration.sql to enable per-order membership/coupon snapshots.");
+  } catch { orderMembershipColumnsExistCache = false; }
+  return orderMembershipColumnsExistCache;
 }

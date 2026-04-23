@@ -8,6 +8,294 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// server/business.ts
+var business_exports = {};
+__export(business_exports, {
+  STORE_TIMEZONE: () => STORE_TIMEZONE,
+  TIERS: () => TIERS,
+  TIER_RANK: () => TIER_RANK,
+  deliveryCutoffLabelForTier: () => deliveryCutoffLabelForTier,
+  isDeliveryAvailableForTier: () => isDeliveryAvailableForTier,
+  isMembershipTier: () => isMembershipTier,
+  tierConfig: () => tierConfig
+});
+function tierConfig(tier) {
+  if (!tier) return TIERS.standard;
+  return TIERS[tier] ?? TIERS.standard;
+}
+function isMembershipTier(value) {
+  return value === "standard" || value === "gold" || value === "platinum";
+}
+function storeNowParts(now = /* @__PURE__ */ new Date()) {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: STORE_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  });
+  const parts = fmt.formatToParts(now);
+  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+  const minute = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+  return { hour: hour === 24 ? 0 : hour, minute };
+}
+function isDeliveryAvailableForTier(tier, now = /* @__PURE__ */ new Date()) {
+  const cfg = tierConfig(tier);
+  const { hour, minute } = storeNowParts(now);
+  if (hour < cfg.cutoffHour) return true;
+  if (hour > cfg.cutoffHour) return false;
+  return minute < cfg.cutoffMinute;
+}
+function deliveryCutoffLabelForTier(tier) {
+  const cfg = tierConfig(tier);
+  const h12 = (cfg.cutoffHour + 11) % 12 + 1;
+  const ampm = cfg.cutoffHour >= 12 ? "PM" : "AM";
+  const mm = cfg.cutoffMinute.toString().padStart(2, "0");
+  return `${h12}:${mm} ${ampm}`;
+}
+var TIERS, TIER_RANK, STORE_TIMEZONE;
+var init_business = __esm({
+  "server/business.ts"() {
+    "use strict";
+    TIERS = {
+      standard: { key: "standard", label: "Standard", monthlyPrice: 0, cutoffHour: 20, cutoffMinute: 30, memberDiscountPct: 0 },
+      gold: { key: "gold", label: "Gold", monthlyPrice: 9.99, cutoffHour: 21, cutoffMinute: 30, memberDiscountPct: 5 },
+      platinum: { key: "platinum", label: "Platinum", monthlyPrice: 19.99, cutoffHour: 22, cutoffMinute: 30, memberDiscountPct: 10 }
+    };
+    TIER_RANK = { standard: 0, gold: 1, platinum: 2 };
+    STORE_TIMEZONE = "America/Barbados";
+  }
+});
+
+// server/memberships.ts
+var memberships_exports = {};
+__export(memberships_exports, {
+  activateMembership: () => activateMembership,
+  getEffectiveTier: () => getEffectiveTier,
+  getMembershipByPayPalId: () => getMembershipByPayPalId,
+  getMembershipByUser: () => getMembershipByUser,
+  membershipTableExists: () => membershipTableExists,
+  upsertPendingMembership: () => upsertPendingMembership
+});
+async function membershipTableExists() {
+  if (membershipTableExistsCache !== null) return membershipTableExistsCache;
+  try {
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase.from("user_memberships").select("user_id").limit(1);
+    membershipTableExistsCache = !error;
+    if (error) console.warn("[memberships] user_memberships table not present \u2014 membership system disabled until supabase-membership-coupon-migration.sql is run.");
+  } catch {
+    membershipTableExistsCache = false;
+  }
+  return membershipTableExistsCache;
+}
+async function getEffectiveTier(userId) {
+  if (!userId) return "standard";
+  if (!await membershipTableExists()) return "standard";
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase.from("user_memberships").select("tier,status,expires_at").eq("user_id", userId).maybeSingle();
+    if (error || !data) return "standard";
+    const row = data;
+    if (row.status !== "active") return "standard";
+    if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) return "standard";
+    return isMembershipTier(row.tier) ? row.tier : "standard";
+  } catch (err) {
+    console.warn("[memberships] getEffectiveTier failed; defaulting to standard:", err);
+    return "standard";
+  }
+}
+async function getMembershipByUser(userId) {
+  if (!await membershipTableExists()) return null;
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.from("user_memberships").select("*").eq("user_id", userId).maybeSingle();
+  if (error) {
+    console.error("[memberships] getMembershipByUser error:", error);
+    return null;
+  }
+  return data ?? null;
+}
+async function getMembershipByPayPalId(paypalOrderId) {
+  if (!await membershipTableExists()) return null;
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.from("user_memberships").select("*").eq("pending_paypal_order_id", paypalOrderId).maybeSingle();
+  if (error) {
+    console.error("[memberships] getMembershipByPayPalId error:", error);
+    return null;
+  }
+  return data ?? null;
+}
+async function upsertPendingMembership(args) {
+  if (!await membershipTableExists()) {
+    throw new Error("Membership system not enabled. Apply supabase-membership-coupon-migration.sql first.");
+  }
+  if (!TIERS[args.tier] || args.tier === "standard") {
+    throw new Error("Invalid tier for subscription.");
+  }
+  const supabase = getSupabaseAdmin();
+  const existing = await getMembershipByUser(args.userId);
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const pendingFields = {
+    pending_paypal_order_id: args.paypalOrderId,
+    pending_tier: args.tier,
+    pending_amount: args.amount,
+    pending_currency_code: args.currencyCode,
+    pending_created_at: now,
+    updated_at: now
+  };
+  if (existing) {
+    const { error } = await supabase.from("user_memberships").update(pendingFields).eq("user_id", args.userId);
+    if (error) throw new Error("Failed to update pending membership: " + error.message);
+  } else {
+    const { error } = await supabase.from("user_memberships").insert({
+      user_id: args.userId,
+      tier: "standard",
+      status: "pending_payment",
+      ...pendingFields
+    });
+    if (error) throw new Error("Failed to create pending membership: " + error.message);
+  }
+}
+async function activateMembership(args) {
+  const supabase = getSupabaseAdmin();
+  const existing = await getMembershipByPayPalId(args.paypalOrderId);
+  if (!existing) throw new Error("No pending membership found for this PayPal order.");
+  if (!existing.pending_tier) throw new Error("Pending membership row is missing tier info.");
+  const expectedAmount = Number(existing.pending_amount ?? 0);
+  const expectedCcy = String(existing.pending_currency_code ?? "");
+  const matches = Math.round(args.capturedAmount * 100) === Math.round(expectedAmount * 100) && args.capturedCurrency.toUpperCase() === expectedCcy.toUpperCase();
+  if (!matches) {
+    throw new Error(`Captured amount/currency mismatch: expected ${expectedAmount} ${expectedCcy}, got ${args.capturedAmount} ${args.capturedCurrency}.`);
+  }
+  const now = /* @__PURE__ */ new Date();
+  const baseExpiry = existing.status === "active" && existing.expires_at && new Date(existing.expires_at).getTime() > now.getTime() ? new Date(existing.expires_at) : now;
+  const expires = new Date(baseExpiry.getTime() + 30 * 24 * 60 * 60 * 1e3);
+  const { data, error } = await supabase.from("user_memberships").update({
+    tier: existing.pending_tier,
+    status: "active",
+    started_at: existing.started_at ?? now.toISOString(),
+    expires_at: expires.toISOString(),
+    payment_reference: args.reference,
+    paypal_order_id: args.paypalOrderId,
+    amount_paid: args.capturedAmount,
+    currency_code: args.capturedCurrency,
+    // Clear pending fields so the same PayPal id can't be replayed.
+    pending_paypal_order_id: null,
+    pending_tier: null,
+    pending_amount: null,
+    pending_currency_code: null,
+    pending_created_at: null,
+    updated_at: now.toISOString()
+  }).eq("user_id", existing.user_id).select().single();
+  if (error || !data) throw new Error("Failed to activate membership: " + (error?.message ?? "unknown"));
+  return data;
+}
+var membershipTableExistsCache;
+var init_memberships = __esm({
+  "server/memberships.ts"() {
+    "use strict";
+    init_payment();
+    init_business();
+    membershipTableExistsCache = null;
+  }
+});
+
+// server/coupons.ts
+var coupons_exports = {};
+__export(coupons_exports, {
+  CouponError: () => CouponError,
+  couponsTableExists: () => couponsTableExists,
+  recordCouponRedemption: () => recordCouponRedemption,
+  resolveCoupon: () => resolveCoupon
+});
+async function couponsTableExists() {
+  if (couponsTableExistsCache !== null) return couponsTableExistsCache;
+  try {
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase.from("coupons").select("id").limit(1);
+    couponsTableExistsCache = !error;
+    if (error) console.warn("[coupons] coupons table not present \u2014 coupon system disabled until supabase-membership-coupon-migration.sql is run.");
+  } catch {
+    couponsTableExistsCache = false;
+  }
+  return couponsTableExistsCache;
+}
+async function resolveCoupon(ctx) {
+  if (!await couponsTableExists()) throw new CouponError("Coupon system is not enabled.", 503);
+  const code = ctx.code.trim().toUpperCase();
+  if (!code) throw new CouponError("Enter a coupon code.");
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.from("coupons").select("id,code,description,discount_type,discount_value,min_order,usage_limit,per_user_limit,member_only,active,starts_at,ends_at,times_used").eq("code", code).maybeSingle();
+  if (error) throw new CouponError("Failed to load coupon.", 500);
+  if (!data) throw new CouponError("That coupon code is not valid.");
+  const coupon = data;
+  if (!coupon.active) throw new CouponError("This coupon is no longer active.");
+  const now = Date.now();
+  if (coupon.starts_at && new Date(coupon.starts_at).getTime() > now) throw new CouponError("This coupon is not active yet.");
+  if (coupon.ends_at && new Date(coupon.ends_at).getTime() < now) throw new CouponError("This coupon has expired.");
+  if (coupon.usage_limit !== null && coupon.times_used >= coupon.usage_limit) {
+    throw new CouponError("This coupon has reached its usage limit.");
+  }
+  if (coupon.min_order > 0 && ctx.subtotal < coupon.min_order) {
+    throw new CouponError(`Minimum order of ${coupon.min_order.toFixed(2)} required for this coupon.`);
+  }
+  if (coupon.member_only) {
+    const required = TIER_RANK[coupon.member_only];
+    const have = TIER_RANK[ctx.customerTier];
+    if (have < required) {
+      throw new CouponError(`This coupon is for ${coupon.member_only.charAt(0).toUpperCase() + coupon.member_only.slice(1)} members only.`);
+    }
+  }
+  if (coupon.per_user_limit > 0) {
+    const usedQuery = supabase.from("coupon_redemptions").select("id", { count: "exact", head: true }).eq("coupon_id", coupon.id);
+    const { count, error: cErr } = ctx.userId ? await usedQuery.eq("user_id", ctx.userId) : await usedQuery.eq("customer_phone", ctx.customerPhone);
+    if (cErr) throw new CouponError("Failed to check coupon usage.", 500);
+    if ((count ?? 0) >= coupon.per_user_limit) {
+      throw new CouponError("You have already used this coupon.");
+    }
+  }
+  let discountAmount = 0;
+  let freeDelivery = false;
+  if (coupon.discount_type === "percent") {
+    discountAmount = ctx.subtotal * (Number(coupon.discount_value) / 100);
+  } else if (coupon.discount_type === "fixed") {
+    discountAmount = Math.min(Number(coupon.discount_value), ctx.subtotal);
+  } else if (coupon.discount_type === "free_delivery") {
+    freeDelivery = true;
+  }
+  discountAmount = Math.max(0, Math.round(discountAmount * 100) / 100);
+  return { coupon, discountAmount, freeDelivery };
+}
+async function recordCouponRedemption(args) {
+  const supabase = getSupabaseAdmin();
+  const { error: insertErr } = await supabase.from("coupon_redemptions").insert({
+    coupon_id: args.coupon.id,
+    coupon_code: args.coupon.code,
+    order_id: args.orderId,
+    user_id: args.userId,
+    customer_phone: args.customerPhone,
+    discount_amount: args.discountAmount
+  });
+  if (insertErr) console.error("[coupons] recordCouponRedemption insert error:", insertErr);
+  const { error: updErr } = await supabase.from("coupons").update({ times_used: args.coupon.times_used + 1 }).eq("id", args.coupon.id);
+  if (updErr) console.error("[coupons] increment times_used error:", updErr);
+}
+var couponsTableExistsCache, CouponError;
+var init_coupons = __esm({
+  "server/coupons.ts"() {
+    "use strict";
+    init_payment();
+    init_business();
+    couponsTableExistsCache = null;
+    CouponError = class extends Error {
+      status;
+      constructor(message, status = 400) {
+        super(message);
+        this.status = status;
+      }
+    };
+  }
+});
+
 // server/payment.ts
 var payment_exports = {};
 __export(payment_exports, {
@@ -22,6 +310,7 @@ __export(payment_exports, {
   getPayPalBase: () => getPayPalBase,
   getSupabaseAdmin: () => getSupabaseAdmin,
   isPayPalConfigured: () => isPayPalConfigured,
+  orderMembershipColumnsExist: () => orderMembershipColumnsExist,
   updateOrderCancelled: () => updateOrderCancelled,
   updateOrderFailed: () => updateOrderFailed,
   updateOrderPaid: () => updateOrderPaid
@@ -269,7 +558,40 @@ async function createServerOrder(input) {
   const { data: settingsRow } = await supabase.from("settings").select("currency_code,currency_symbol").limit(1).maybeSingle();
   const currencyCode = settingsRow?.currency_code ?? "USD";
   const currencySymbol = settingsRow?.currency_symbol ?? "$";
-  const total = Math.round((subtotal + deliveryFee) * 100) / 100;
+  const { getEffectiveTier: getEffectiveTier2 } = await Promise.resolve().then(() => (init_memberships(), memberships_exports));
+  const { resolveCoupon: resolveCoupon2, recordCouponRedemption: recordCouponRedemption2 } = await Promise.resolve().then(() => (init_coupons(), coupons_exports));
+  const { tierConfig: tierConfig2, isDeliveryAvailableForTier: isDeliveryAvailableForTier2, deliveryCutoffLabelForTier: deliveryCutoffLabelForTier2 } = await Promise.resolve().then(() => (init_business(), business_exports));
+  const membershipTier = await getEffectiveTier2(input.user_id ?? null);
+  const tierCfg = tierConfig2(membershipTier);
+  if (fulfillmentMethod === "delivery" && !isDeliveryAvailableForTier2(membershipTier)) {
+    throw new Error(
+      `Delivery is closed for today (${tierCfg.label} cutoff is ${deliveryCutoffLabelForTier2(membershipTier)}). Please choose Pick Up or order again tomorrow.`
+    );
+  }
+  const membershipDiscount = Math.round(subtotal * tierCfg.memberDiscountPct / 100 * 100) / 100;
+  let couponDiscount = 0;
+  let couponCode = null;
+  let resolvedCoupon = null;
+  if (input.coupon_code && input.coupon_code.trim()) {
+    resolvedCoupon = await resolveCoupon2({
+      code: input.coupon_code,
+      subtotal: Math.max(0, subtotal - membershipDiscount),
+      // coupon applies to discounted subtotal
+      deliveryFee,
+      customerTier: membershipTier,
+      userId: input.user_id ?? null,
+      customerPhone: String(input.customer_phone ?? "").trim()
+    });
+    couponCode = resolvedCoupon.coupon.code;
+    if (resolvedCoupon.freeDelivery) {
+      deliveryFee = 0;
+    } else {
+      couponDiscount = Math.round(resolvedCoupon.discountAmount * 100) / 100;
+    }
+  }
+  const totalDiscount = Math.round((membershipDiscount + couponDiscount) * 100) / 100;
+  const subtotalAfter = Math.max(0, Math.round((subtotal - totalDiscount) * 100) / 100);
+  const total = Math.round((subtotalAfter + deliveryFee) * 100) / 100;
   const trimmedAddress = String(input.delivery_address ?? "").trim();
   const orderRow = {
     customer_name: String(input.customer_name ?? "").trim(),
@@ -292,6 +614,15 @@ async function createServerOrder(input) {
     orderRow.fulfillment_method = fulfillmentMethod;
     orderRow.pickup_location = fulfillmentMethod === "pickup" ? input.pickup_location ?? null : null;
   }
+  const hasMembershipCols = await orderMembershipColumnsExist();
+  if (hasMembershipCols) {
+    orderRow.user_id = input.user_id ?? null;
+    orderRow.membership_tier = membershipTier;
+    orderRow.membership_discount = membershipDiscount;
+    orderRow.coupon_code = couponCode;
+    orderRow.coupon_discount = couponDiscount;
+    orderRow.total_discount = totalDiscount;
+  }
   const insertRes = await supabase.from("orders").insert(orderRow).select().single();
   if (insertRes.error) throw new Error("Failed to create order: " + insertRes.error.message);
   const order = insertRes.data;
@@ -310,9 +641,45 @@ async function createServerOrder(input) {
     await supabase.from("orders").delete().eq("id", order.id);
     throw new Error("Failed to create order items: " + itemsRes.error.message);
   }
-  return { orderId: order.id, subtotal, deliveryFee, total, currencyCode };
+  if (resolvedCoupon) {
+    try {
+      await recordCouponRedemption2({
+        coupon: resolvedCoupon.coupon,
+        orderId: order.id,
+        userId: input.user_id ?? null,
+        customerPhone: String(input.customer_phone ?? "").trim(),
+        discountAmount: resolvedCoupon.freeDelivery ? 0 : couponDiscount
+      });
+    } catch (e) {
+      console.error("[order] coupon redemption record failed (non-fatal):", e);
+    }
+  }
+  return {
+    orderId: order.id,
+    subtotal,
+    deliveryFee,
+    total,
+    currencyCode,
+    membershipTier,
+    membershipDiscount,
+    couponCode,
+    couponDiscount,
+    totalDiscount
+  };
 }
-var SUPABASE_URL, SUPABASE_SERVICE_KEY, PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, PAYPAL_ENV, fulfillmentColumnsExistCache;
+async function orderMembershipColumnsExist() {
+  if (orderMembershipColumnsExistCache !== null) return orderMembershipColumnsExistCache;
+  try {
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase.from("orders").select("membership_tier").limit(1);
+    orderMembershipColumnsExistCache = !error;
+    if (error) console.warn("[payment] orders.membership_tier missing \u2014 apply supabase-membership-coupon-migration.sql to enable per-order membership/coupon snapshots.");
+  } catch {
+    orderMembershipColumnsExistCache = false;
+  }
+  return orderMembershipColumnsExistCache;
+}
+var SUPABASE_URL, SUPABASE_SERVICE_KEY, PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, PAYPAL_ENV, fulfillmentColumnsExistCache, orderMembershipColumnsExistCache;
 var init_payment = __esm({
   "server/payment.ts"() {
     "use strict";
@@ -322,6 +689,7 @@ var init_payment = __esm({
     PAYPAL_CLIENT_SECRET = (process.env.PAYPAL_CLIENT_SECRET ?? "").trim();
     PAYPAL_ENV = (process.env.PAYPAL_ENV ?? "sandbox").toLowerCase().trim();
     fulfillmentColumnsExistCache = null;
+    orderMembershipColumnsExistCache = null;
   }
 });
 
@@ -330,7 +698,32 @@ import express from "express";
 
 // server/routes.ts
 init_payment();
+init_coupons();
+init_memberships();
+init_business();
 import { createServer } from "node:http";
+
+// server/auth.ts
+init_payment();
+async function getAuthedUserId(req) {
+  const header = req.header("authorization") ?? req.header("Authorization");
+  if (!header) return null;
+  const m = /^Bearer\s+(.+)$/i.exec(header.trim());
+  if (!m) return null;
+  const token = m[1].trim();
+  if (!token) return null;
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data?.user?.id) return null;
+    return data.user.id;
+  } catch (err) {
+    console.warn("[auth] getAuthedUserId failed:", err);
+    return null;
+  }
+}
+
+// server/routes.ts
 function amountsMatch(a, b) {
   return Math.round(Number(a) * 100) === Math.round(Number(b) * 100);
 }
@@ -359,9 +752,98 @@ async function registerRoutes(app2) {
       environment: (process.env.PAYPAL_ENV ?? "sandbox").toLowerCase()
     });
   });
+  app2.get("/api/memberships/me", async (req, res) => {
+    try {
+      const userId = await getAuthedUserId(req);
+      if (!userId) return res.json({ tier: "standard", membership: null });
+      const [tier, membership] = await Promise.all([
+        getEffectiveTier(userId),
+        getMembershipByUser(userId)
+      ]);
+      return res.json({ tier, membership });
+    } catch (err) {
+      console.error("[GET /api/memberships/me]", err);
+      return res.json({ tier: "standard", membership: null });
+    }
+  });
+  app2.post("/api/memberships/subscribe", async (req, res) => {
+    try {
+      const userId = await getAuthedUserId(req);
+      if (!userId) return res.status(401).json({ error: "Sign in required to subscribe." });
+      const { tier, origin } = req.body;
+      if (!tier || !origin) return res.status(400).json({ error: "Missing tier or origin." });
+      if (!isMembershipTier(tier) || tier === "standard") return res.status(400).json({ error: "Invalid tier." });
+      if (!isPayPalConfigured()) return res.status(503).json({ error: "PayPal is not configured." });
+      if (!await membershipTableExists()) return res.status(503).json({ error: "Membership system not enabled. Apply supabase-membership-coupon-migration.sql first." });
+      const cfg = TIERS[tier];
+      const supabase = getSupabaseAdmin();
+      const { data: s } = await supabase.from("settings").select("currency_code").limit(1).maybeSingle();
+      const currency = s?.currency_code ?? "USD";
+      const ref = `mem-${userId.slice(0, 8)}-${Date.now()}`;
+      const result = await createPayPalOrder({
+        orderId: ref,
+        amount: cfg.monthlyPrice,
+        currency,
+        description: `HD Xquisite ${cfg.label} Membership \u2014 30 days`,
+        returnUrl: `${origin}/payment-success`,
+        cancelUrl: `${origin}/payment-cancelled`
+      });
+      await upsertPendingMembership({
+        userId,
+        tier,
+        paypalOrderId: result.paypalOrderId,
+        amount: cfg.monthlyPrice,
+        currencyCode: currency
+      });
+      return res.json({ paypalOrderId: result.paypalOrderId, approvalUrl: result.approvalUrl, kind: "membership" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to start membership.";
+      console.error("[POST /api/memberships/subscribe]", err);
+      return res.status(500).json({ error: message });
+    }
+  });
+  app2.post("/api/coupons/validate", async (req, res) => {
+    try {
+      const { code, subtotal, delivery_fee, customer_phone } = req.body;
+      if (!code || typeof subtotal !== "number") {
+        return res.status(400).json({ error: "Missing code or subtotal." });
+      }
+      if (!await couponsTableExists()) {
+        return res.status(503).json({ error: "Coupon system not enabled. Apply supabase-membership-coupon-migration.sql first." });
+      }
+      const authedUserId = await getAuthedUserId(req);
+      const tier = await getEffectiveTier(authedUserId);
+      const cfg = (await Promise.resolve().then(() => (init_business(), business_exports))).tierConfig(tier);
+      const memberDiscount = Math.round(subtotal * cfg.memberDiscountPct / 100 * 100) / 100;
+      const result = await resolveCoupon({
+        code,
+        subtotal: Math.max(0, subtotal - memberDiscount),
+        deliveryFee: Number(delivery_fee ?? 0),
+        customerTier: tier,
+        userId: authedUserId,
+        customerPhone: String(customer_phone ?? "")
+      });
+      return res.json({
+        ok: true,
+        code: result.coupon.code,
+        description: result.coupon.description,
+        discount_type: result.coupon.discount_type,
+        discount_value: result.coupon.discount_value,
+        coupon_discount: result.freeDelivery ? 0 : result.discountAmount,
+        free_delivery: result.freeDelivery,
+        membership_tier: tier,
+        membership_discount: memberDiscount
+      });
+    } catch (err) {
+      if (err instanceof CouponError) return res.status(err.status).json({ error: err.message });
+      console.error("[POST /api/coupons/validate]", err);
+      return res.status(500).json({ error: "Failed to validate coupon." });
+    }
+  });
   app2.post("/api/orders/create", async (req, res) => {
     try {
       const body = req.body;
+      const authedUserId = await getAuthedUserId(req);
       const fulfillment = body.fulfillment_method === "pickup" ? "pickup" : "delivery";
       const method = fulfillment === "pickup" ? "online_card" : body.payment_method === "online_card" ? "online_card" : "cash_on_delivery";
       if (!body.customer_name?.trim()) return res.status(400).json({ error: "Name is required." });
@@ -387,7 +869,9 @@ async function registerRoutes(app2) {
         zone_id: body.zone_id ?? null,
         payment_method: method,
         fulfillment_method: fulfillment,
-        pickup_location: body.pickup_location ?? null
+        pickup_location: body.pickup_location ?? null,
+        user_id: authedUserId,
+        coupon_code: body.coupon_code ?? null
       });
       return res.json(result);
     } catch (err) {
@@ -444,6 +928,28 @@ async function registerRoutes(app2) {
       }
       if (!isPayPalConfigured()) {
         return res.status(503).json({ error: "PayPal is not configured." });
+      }
+      const pendingMembership = await getMembershipByPayPalId(paypalOrderId);
+      if (pendingMembership) {
+        if (pendingMembership.status === "active") {
+          return res.json({ success: true, kind: "membership", tier: pendingMembership.tier, status: "ALREADY_ACTIVE" });
+        }
+        const result2 = await capturePayPalOrder(paypalOrderId);
+        if (!result2.success) return res.status(402).json({ success: false, status: result2.status, error: "Membership payment was not completed." });
+        const activated = await activateMembership({
+          paypalOrderId,
+          reference: result2.captureId,
+          capturedAmount: result2.amount,
+          capturedCurrency: result2.currency
+        });
+        return res.json({
+          success: true,
+          kind: "membership",
+          tier: activated.tier,
+          status: result2.status,
+          captureId: result2.captureId,
+          expires_at: activated.expires_at
+        });
       }
       const order = await getOrderByPayPalId(paypalOrderId);
       if (!order) {

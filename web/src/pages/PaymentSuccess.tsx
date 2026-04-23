@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { IoCheckmarkCircle, IoReceiptOutline, IoHome, IoAlertCircle } from "react-icons/io5";
+import { IoCheckmarkCircle, IoReceiptOutline, IoHome, IoAlertCircle, IoSparkles } from "react-icons/io5";
+import { useMembership } from "@/context/MembershipContext";
 
-const PENDING_ORDER_KEY = "hd_pending_payment_order_id";
+const PENDING_ORDER_KEY      = "hd_pending_payment_order_id";
+const PENDING_MEMBERSHIP_KEY = "hd_pending_membership_paypal_id";
 
 type Status = "loading" | "confirmed" | "error";
+type Kind   = "order" | "membership";
 
 export function PaymentSuccess() {
   const [searchParams] = useSearchParams();
@@ -14,9 +17,12 @@ export function PaymentSuccess() {
   const paypalToken  = searchParams.get("token")   ?? "";
   const queryOrderId = searchParams.get("orderId") ?? ""; // fallback
 
+  const { refresh: refreshMembership } = useMembership();
   const [status, setStatus]         = useState<Status>("loading");
+  const [kind, setKind]             = useState<Kind>("order");
   const [orderId, setOrderId]       = useState<string>("");
   const [captureId, setCaptureId]   = useState<string>("");
+  const [tierLabel, setTierLabel]   = useState<string>("");
 
   useEffect(() => {
     confirmPayment();
@@ -42,9 +48,18 @@ export function PaymentSuccess() {
         body: JSON.stringify({ paypalOrderId: paypalToken }),
       });
 
-      const data = await res.json() as { success?: boolean; orderId?: string; captureId?: string; error?: string };
+      const data = await res.json() as { success?: boolean; orderId?: string; captureId?: string; error?: string; kind?: Kind; tier?: string };
 
       if (res.ok && data.success) {
+        if (data.kind === "membership") {
+          setKind("membership");
+          if (data.tier) setTierLabel(data.tier.charAt(0).toUpperCase() + data.tier.slice(1));
+          if (data.captureId) setCaptureId(data.captureId);
+          localStorage.removeItem(PENDING_MEMBERSHIP_KEY);
+          await refreshMembership();
+          setStatus("confirmed");
+          return;
+        }
         if (data.orderId)   setOrderId(data.orderId);
         if (data.captureId) setCaptureId(data.captureId);
         localStorage.removeItem(PENDING_ORDER_KEY);
@@ -119,9 +134,13 @@ export function PaymentSuccess() {
         </div>
 
         <div className="text-center">
-          <p className="font-playfair text-3xl font-bold text-white mb-2">Payment Received!</p>
+          <p className="font-playfair text-3xl font-bold text-white mb-2">
+            {kind === "membership" ? "Welcome to the Club!" : "Payment Received!"}
+          </p>
           <p className="font-cormorant text-xl" style={{ color: "rgba(255,255,255,0.6)" }}>
-            Your order is confirmed and being prepared.
+            {kind === "membership"
+              ? `${tierLabel || "Your"} membership is now active for the next 30 days.`
+              : "Your order is confirmed and being prepared."}
           </p>
         </div>
 
@@ -145,19 +164,30 @@ export function PaymentSuccess() {
         </div>
 
         <div className="w-full flex flex-col gap-3">
-          {orderId && (
-            <button onClick={() => navigate(`/order-tracking/${orderId}`)}
+          {kind === "membership" ? (
+            <button onClick={() => navigate("/membership")}
               className="w-full py-4 rounded-2xl font-inter font-bold text-sm tracking-widest press-active flex items-center justify-center gap-2"
               style={{ background: "linear-gradient(135deg, #D4901A, #F5C842)", color: "#09090C" }}>
-              <IoReceiptOutline size={18} />
-              TRACK MY ORDER
+              <IoSparkles size={18} />
+              VIEW MY MEMBERSHIP
             </button>
+          ) : (
+            <>
+              {orderId && (
+                <button onClick={() => navigate(`/order-tracking/${orderId}`)}
+                  className="w-full py-4 rounded-2xl font-inter font-bold text-sm tracking-widest press-active flex items-center justify-center gap-2"
+                  style={{ background: "linear-gradient(135deg, #D4901A, #F5C842)", color: "#09090C" }}>
+                  <IoReceiptOutline size={18} />
+                  TRACK MY ORDER
+                </button>
+              )}
+              <button onClick={() => navigate("/orders")}
+                className="w-full py-3 rounded-2xl font-inter text-sm press-active"
+                style={{ background: "rgba(228,161,43,0.08)", border: "1px solid rgba(228,161,43,0.2)", color: "#E4A12B" }}>
+                View All Orders
+              </button>
+            </>
           )}
-          <button onClick={() => navigate("/orders")}
-            className="w-full py-3 rounded-2xl font-inter text-sm press-active"
-            style={{ background: "rgba(228,161,43,0.08)", border: "1px solid rgba(228,161,43,0.2)", color: "#E4A12B" }}>
-            View All Orders
-          </button>
           <button onClick={() => navigate("/")}
             className="w-full py-3 rounded-2xl font-inter text-sm press-active flex items-center justify-center gap-2"
             style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}>

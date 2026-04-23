@@ -5,6 +5,7 @@ import { AgeGateProvider } from "@/context/AgeGateContext";
 import { AuthProvider } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
 import { AppSettingsProvider } from "@/context/AppSettingsContext";
+import { MembershipProvider } from "@/context/MembershipContext";
 import App from "./App";
 import "./index.css";
 
@@ -36,9 +37,11 @@ ReactDOM.createRoot(appContainer).render(
       <AgeGateProvider>
         <AuthProvider>
           <AppSettingsProvider>
-            <CartProvider>
-              <App />
-            </CartProvider>
+            <MembershipProvider>
+              <CartProvider>
+                <App />
+              </CartProvider>
+            </MembershipProvider>
           </AppSettingsProvider>
         </AuthProvider>
       </AgeGateProvider>

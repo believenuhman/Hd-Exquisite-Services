@@ -23,13 +23,24 @@ A premium liquor delivery web app (React + Vite + Tailwind) built for Median web
 - **Pages**: AgeGate → Welcome → Login/Signup/ForgotPassword → Home → Search → ProductDetail → Cart → Checkout → Profile → Orders → OrderTracking → Settings → ContactSupport → **PaymentSuccess** → **PaymentFailed** → **PaymentCancelled**
 - **Components**: SplashScreen, BottomNav (5 tabs), DrawerMenu, ProductCard, ErrorBoundary
 
-## REQUIRED: Run This Migration Before Going Live
+## REQUIRED: Run These Migrations Before Going Live
 
-The `supabase-payment-migration.sql` file in the project root **must be applied** in Supabase before payment features work. Without it, order creation will fail because payment columns don't exist.
+Both SQL files in the project root **must be applied** in Supabase before the payment + membership features work. Code degrades gracefully without them, but features stay disabled.
+
+1. `supabase-payment-migration.sql` — payment columns on `orders`. Required for the basic checkout / PayPal flow.
+2. `supabase-membership-coupon-migration.sql` — `user_memberships`, `coupons`, `coupon_redemptions` tables + membership/coupon snapshot columns on `orders`. Required for the membership tier system and coupon codes.
 
 **Steps:**
 1. Open your Supabase project → SQL Editor → New Query
-2. Paste the contents of `supabase-payment-migration.sql` and click Run
+2. Paste the contents of each file (in order above) and click Run
+
+## Membership & Coupon System
+
+- **Tiers**: Standard (free, 8:30 PM cutoff), Gold ($9.99/30d, 9:30 PM cutoff, 5% off), Platinum ($19.99/30d, 10:30 PM cutoff, 10% off). Single source of truth in `web/src/lib/business.ts` mirrored in `server/business.ts`.
+- **Subscription flow**: Authenticated user picks a tier on `/membership` → `POST /api/memberships/subscribe` (JWT-derived user) → PayPal one-time charge → `/payment-success` capture activates the row for 30 days. Active members are never downgraded mid-checkout — pending PayPal data is stored in separate `pending_*` columns.
+- **Membership capture integrity**: server verifies captured PayPal amount + currency against the pending snapshot before activating.
+- **Coupons**: `POST /api/coupons/validate` (preview only, never trusts client) + final discount recomputed in `createServerOrder`. Order in pricing logic: member % off subtotal first, then coupon applied to discounted subtotal. `free_delivery` coupons zero the delivery fee.
+- **Auth boundary**: `server/auth.ts` reads `Authorization: Bearer <jwt>` and resolves the Supabase user. The frontend uses `web/src/lib/api.ts` (`authedFetch`) to attach this header. The server NEVER trusts a `user_id` field in request bodies — that prevented the original IDOR / tier-spoofing risk flagged in code review.
 
 ## Payment System
 
