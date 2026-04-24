@@ -1,11 +1,12 @@
 import React from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { IoHome, IoSearch, IoCart, IoPerson, IoReceipt } from "react-icons/io5";
+import { IoHome, IoSearch, IoCart, IoPerson, IoReceipt, IoCalendar } from "react-icons/io5";
 import { useCart } from "@/context/CartContext";
 
 const TABS = [
   { path: "/", label: "Home", Icon: IoHome },
   { path: "/search", label: "Search", Icon: IoSearch },
+  { path: "/events", label: "Events", Icon: IoCalendar },
   { path: "/cart", label: "Cart", Icon: IoCart },
   { path: "/orders", label: "Orders", Icon: IoReceipt },
   { path: "/profile", label: "Profile", Icon: IoPerson },

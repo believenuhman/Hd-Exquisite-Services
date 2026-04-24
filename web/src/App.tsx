@@ -14,6 +14,8 @@ import { ForgotPassword } from "@/pages/auth/ForgotPassword";
 import { ResetPassword } from "@/pages/auth/ResetPassword";
 import { Home } from "@/pages/Home";
 import { Search } from "@/pages/Search";
+import { Events } from "@/pages/Events";
+import { EventDetail } from "@/pages/EventDetail";
 import { Cart } from "@/pages/Cart";
 import { Checkout } from "@/pages/Checkout";
 import { Profile } from "@/pages/Profile";
@@ -37,8 +39,8 @@ function QueryRedirect({ to }: { to: string }) {
   return <Navigate to={qs ? `${to}?${qs}` : to} replace />;
 }
 
-const TAB_PATHS = ["/", "/search", "/cart", "/profile", "/orders"];
-const NO_NAV_PREFIXES = ["/checkout", "/product/", "/order-tracking/", "/auth/", "/payment", "/settings", "/contact-support", "/membership", "/admin"];
+const TAB_PATHS = ["/", "/search", "/cart", "/profile", "/orders", "/events"];
+const NO_NAV_PREFIXES = ["/checkout", "/product/", "/order-tracking/", "/auth/", "/payment", "/settings", "/contact-support", "/membership", "/admin", "/events/"];
 
 function AppInner() {
   const { verified } = useAgeGate();
@@ -47,7 +49,7 @@ function AppInner() {
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith("/admin");
   const isNoNavRoute = NO_NAV_PREFIXES.some((p) => location.pathname.startsWith(p));
-  const showBottomNav = !isNoNavRoute && (TAB_PATHS.includes(location.pathname) || location.pathname.startsWith("/orders"));
+  const showBottomNav = !isNoNavRoute && (TAB_PATHS.includes(location.pathname) || location.pathname.startsWith("/orders") || location.pathname === "/events");
 
   // Admin pages need full viewport width; the customer app is capped at 480px
   // by main.tsx. Toggle the parent container's max-width on route change so
@@ -115,6 +117,8 @@ function AppInner() {
         <Route path="/auth/reset-password" element={<ResetPassword />} />
         <Route path="/" element={<Home />} />
         <Route path="/search" element={<Search />} />
+        <Route path="/events" element={<Events />} />
+        <Route path="/events/:id" element={<EventDetail />} />
         <Route path="/cart" element={<Cart />} />
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/profile" element={<Profile />} />

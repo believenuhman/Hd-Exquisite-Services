@@ -31,6 +31,7 @@ All SQL files in the project root **must be applied** in Supabase before their a
 2. `supabase-membership-coupon-migration.sql` — `user_memberships`, `coupons`, `coupon_redemptions` tables + membership/coupon snapshot columns on `orders`. Required for the membership tier system and coupon codes.
 3. `supabase-admin-migration.sql` — expands `orders.status` check constraint (adds `confirmed`, `ready_for_pickup`) and adds `orders` + `order_items` to the `supabase_realtime` publication. Required for the admin merchant panel.
 4. `supabase-inventory-migration.sql` — creates `locations` (Bridgetown, St. George) + `product_stock` (per-location quantity & low-stock threshold), adds `pickup_location_id` FK on `orders`, and adds RLS so location_admins only see their own location's data. Required for **per-location inventory management**, the pickup-location picker on checkout, and post-payment stock decrement.
+5. `supabase-events-migration.sql` — creates the `events` table (title, date, time, location, flyer URL, `is_active`, `is_featured`, `order_index`) + `events` storage bucket for flyer uploads + RLS (public READ of active rows, admin WRITE) + adds the table to the `supabase_realtime` publication. Required for the customer-facing **Events** page (`/events`) and live updates without redeploy.
 
 **Steps:**
 1. Open your Supabase project → SQL Editor → New Query
@@ -85,6 +86,18 @@ All SQL files in the project root **must be applied** in Supabase before their a
 - **Realtime**: Orders dashboard subscribes to `postgres_changes` on `public.orders`; new orders trigger refetch + golden chime + badge. RLS gates delivery so location_admins only get notified for their location.
 - **Status mapping**: customer-tracking values stay (`received, packing, out_for_delivery, delivered, refused`); admin gets two extra values (`confirmed`, `ready_for_pickup`).
 - **Files**: `server/admin.ts`, `server/auth.ts` (`ensureAdminContext`), `server/inventory.ts`, `server/routes.ts` (admin + inventory + locations blocks), `web/src/pages/admin/{AdminDashboard,AdminTabs,InventoryPage,AdminGuard}.tsx`, `supabase-admin-migration.sql`, `supabase-inventory-migration.sql`.
+
+## Events page (`/events`)
+- **Customer-facing list of upcoming pop-ups, tastings, and on-site bars.** Powered entirely by the `events` Supabase table — no backend code changes are needed to publish a new event; the merchant just inserts a row.
+- **Files**: `supabase-events-migration.sql`, `web/src/pages/Events.tsx`, `web/src/pages/EventDetail.tsx`, `web/src/components/BottomNav.tsx` (Events tab), `web/src/App.tsx` (`/events`, `/events/:id` routes).
+- **Filtering**: only `is_active = true` AND `event_date >= today` rows render. Sorted by `event_date ASC`, then `start_time ASC`, then `order_index`. Past events disappear automatically.
+- **Featured event**: rows with `is_featured = true` render at the top in a large gold-bordered hero card; the rest fall into a standard list below.
+- **Detail view** (`/events/:id`): hero image, full description, date/time/location meta, **Get Directions** button (opens Google Maps with the address) and **Add to Calendar** button (opens Google Calendar's "Add Event" template prefilled with all fields).
+- **Live updates**: `Events.tsx` subscribes to a `postgres_changes` realtime channel on `public.events`, so any insert/update/delete in Supabase Studio is reflected in the customer app within a second — no redeploy required. Falls back gracefully on instances where realtime is not enabled.
+- **Adding an event** (in Supabase Studio):
+  1. Storage → `events` bucket → upload your flyer image → click the file → "Get URL" (public). Paste that URL into `image_url`.
+  2. Table Editor → `events` → Insert row → fill in `title`, `event_date` (YYYY-MM-DD), `start_time`/`end_time` (HH:MM:SS, optional), `location_name`, `location_address`, `description`, `image_url`. Set `is_active = true`. Set `is_featured = true` for the headliner. Use `order_index` to break ties between events on the same date.
+  3. Done — the customer app updates live.
 
 ## Inventory & Pickup Locations
 
