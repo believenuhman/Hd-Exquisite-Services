@@ -1,15 +1,16 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { IoReceiptOutline, IoCubeOutline, IoWarningOutline, IoCheckmarkDoneOutline } from "react-icons/io5";
+import { IoReceiptOutline, IoCubeOutline, IoWarningOutline, IoCheckmarkDoneOutline, IoQrCodeOutline } from "react-icons/io5";
 
 // Sub-navigation strip shared by every admin page (Orders / Inventory / Low
-// Stock / Completed). Lives below the dashboard header. Uses NavLink so the
-// active route lights up in gold.
+// Stock / Completed / QR Code). Lives below the dashboard header. Uses
+// NavLink so the active route lights up in gold.
 const TABS = [
   { to: "/admin",            label: "Orders",     Icon: IoReceiptOutline,       end: true },
   { to: "/admin/inventory",  label: "Inventory",  Icon: IoCubeOutline,          end: true },
   { to: "/admin/low-stock",  label: "Low Stock",  Icon: IoWarningOutline,       end: true },
   { to: "/admin/completed",  label: "Completed",  Icon: IoCheckmarkDoneOutline, end: true },
+  { to: "/admin/qr-code",    label: "QR Code",    Icon: IoQrCodeOutline,        end: true },
 ];
 
 export function AdminTabs() {

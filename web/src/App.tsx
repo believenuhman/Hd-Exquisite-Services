@@ -31,6 +31,7 @@ import { PaymentCancelled } from "@/pages/PaymentCancelled";
 import { AdminGuard } from "@/pages/admin/AdminGuard";
 import { AdminDashboard } from "@/pages/admin/AdminDashboard";
 import { InventoryPage } from "@/pages/admin/InventoryPage";
+import { QRCodePage } from "@/pages/admin/QRCodePage";
 
 /** Redirect that preserves the current search-params (query string). */
 function QueryRedirect({ to }: { to: string }) {
@@ -78,6 +79,7 @@ function AppInner() {
         <Route path="/admin/inventory"  element={<AdminGuard><InventoryPage /></AdminGuard>} />
         <Route path="/admin/low-stock"  element={<AdminGuard><InventoryPage initialLowStockOnly /></AdminGuard>} />
         <Route path="/admin/completed"  element={<AdminGuard><AdminDashboard defaultStatus="delivered" lockStatus title="Completed Orders" /></AdminGuard>} />
+        <Route path="/admin/qr-code"    element={<AdminGuard><QRCodePage /></AdminGuard>} />
         <Route path="/admin/*"          element={<Navigate to="/admin" replace />} />
       </Routes>
     );
