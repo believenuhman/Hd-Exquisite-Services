@@ -128,7 +128,7 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError]);
 
-  if (!fontsLoaded && !fontError) return <View style={{ flex: 1 }} />;
+  // web: do not block render while fonts load
 
   return (
     <ErrorBoundary>
