@@ -39,7 +39,7 @@ function AgeGateGuard() {
     }
   }, [ageConfirmed, loading]);
 
-  return null;
+  return <></>;
 }
 
 function AuthGuard() {
@@ -65,7 +65,7 @@ function AuthGuard() {
     // Guests can freely navigate to auth screens to sign up — no redirect
   }, [session, isGuest, authLoading, ageConfirmed, ageLoading, segments]);
 
-  return null;
+  return <></>;
 }
 
 function RootLayoutNav() {
