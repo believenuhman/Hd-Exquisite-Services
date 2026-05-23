@@ -137,7 +137,7 @@ export default function HomeScreen() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchProducts = useCallback(async () => {
