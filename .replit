@@ -10,32 +10,16 @@ build = ["sh", "-c", "npm install --legacy-peer-deps && cd web && npm install --
 run = ["npm", "run", "server:prod"]
 
 [[ports]]
-localPort = 3000
-externalPort = 3002
-
-[[ports]]
 localPort = 3001
-externalPort = 3003
+externalPort = 80
 
 [[ports]]
 localPort = 5000
 externalPort = 5000
 
 [[ports]]
-localPort = 5001
-externalPort = 3000
-
-[[ports]]
-localPort = 5173
-externalPort = 5173
-
-[[ports]]
 localPort = 8081
-externalPort = 80
-
-[[ports]]
-localPort = 8082
-externalPort = 3001
+externalPort = 8081
 
 [env]
 PORT = "5000"
