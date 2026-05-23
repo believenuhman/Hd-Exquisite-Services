@@ -3,6 +3,7 @@ modules = ["nodejs-22"]
 
 [nix]
 channel = "stable-24_05"
+packages = ["lsof"]
 
 [deployment]
 deploymentTarget = "autoscale"
@@ -19,7 +20,13 @@ externalPort = 5000
 
 [[ports]]
 localPort = 8081
-externalPort = 8081
+
+[[ports]]
+localPort = 8082
+
+[[ports]]
+localPort = 8083
+externalPort = 3000
 
 [env]
 PORT = "5000"
