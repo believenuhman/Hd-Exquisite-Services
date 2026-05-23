@@ -17,7 +17,7 @@ const AgeGateContext = createContext<AgeGateContextType>({
 
 export function AgeGateProvider({ children }: { children: React.ReactNode }) {
   const [ageConfirmed, setAgeConfirmed] = useState<boolean | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     AsyncStorage.getItem(AGE_KEY).then((val) => {

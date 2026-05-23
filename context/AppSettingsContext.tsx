@@ -20,7 +20,7 @@ const AppSettingsContext = createContext<AppSettingsContextType>({
 export function AppSettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [zones, setZones] = useState<DeliveryZone[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const fetchAll = async () => {
     try {
